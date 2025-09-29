@@ -1,203 +1,162 @@
 import sqlite3
-from datetime import datetime, timedelta
+from decimal import Decimal, getcontext
+
+# Configura la precisión global de decimal a 28 dígitos (estándar para alta precisión)
+getcontext().prec = 28
 
 class DatabaseManager:
-    """Clase para gestionar la conexión y operaciones con la base de datos SQLite."""
+    def __init__(self, db_name="profitus.db"):
+        self.db_name = db_name
+        self._initialize_db()
 
-    def __init__(self, db_path='profitus.db'):
-        super().__init__()
-        self.db_path = db_path
-        self.conn = None
-        self.cursor = None
-        self.connect()
-        self.create_tables() 
-        self._insert_initial_data()
-
-    def connect(self):
-        """Establece la conexión con la base de datos."""
+    def _initialize_db(self):
+        """Inicializa la base de datos y crea las tablas si no existen."""
         try:
-            self.conn = sqlite3.connect(self.db_path)
-            self.cursor = self.conn.cursor()
-            self.cursor.execute("PRAGMA foreign_keys = ON")
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            # Tabla de Usuarios
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id INTEGER PRIMARY KEY,
+                    usuario TEXT NOT NULL UNIQUE,
+                    password TEXT NOT NULL,
+                    rol TEXT NOT NULL DEFAULT 'empleado'
+                )
+            """)
+
+            # Tabla de Productos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS productos (
+                    id INTEGER PRIMARY KEY,
+                    codigo TEXT UNIQUE,
+                    nombre TEXT NOT NULL,
+                    stock INTEGER NOT NULL DEFAULT 0,
+                    precio_venta REAL NOT NULL DEFAULT 0.00,
+                    precio_costo REAL NOT NULL DEFAULT 0.00,
+                    categoria TEXT
+                )
+            """)
+            
+            # Insertar usuario administrador si no existe
+            cursor.execute("SELECT id FROM usuarios WHERE usuario='admin'")
+            if cursor.fetchone() is None:
+                # La contraseña se guarda en texto plano solo por simplicidad de este proyecto.
+                # En un entorno real, DEBE usarse hashing (ej. bcrypt).
+                cursor.execute("INSERT INTO usuarios (usuario, password, rol) VALUES (?, ?, ?)", 
+                               ('admin', '1234', 'administrador'))
+                
+            # Insertar productos de prueba si no existen
+            cursor.execute("SELECT id FROM productos LIMIT 1")
+            if cursor.fetchone() is None:
+                products_to_insert = [
+                    ('LPT001', 'Laptop Gamer X', 10, 850.50, 700.00, 'Electrónica'),
+                    ('MON002', 'Monitor Curvo 27"', 5, 250.75, 200.00, 'Periféricos'),
+                    ('MOU003', 'Mouse Inalámbrico RGB', 50, 15.99, 10.00, 'Periféricos'),
+                ]
+                cursor.executemany("INSERT INTO productos (codigo, nombre, stock, precio_venta, precio_costo, categoria) VALUES (?, ?, ?, ?, ?, ?)", products_to_insert)
+
+            conn.commit()
+            print(f"Conectado a la DB: {self.db_name}")
+
         except sqlite3.Error as e:
-            print(f"Error al conectar a la base de datos: {e}")
+            print(f"Error al inicializar la base de datos: {e}")
+        finally:
+            if conn:
+                conn.close()
 
-    def close(self):
-        """Cierra la conexión con la base de datos."""
-        if self.conn:
-            self.conn.close()
-
-    def commit(self):
-        """Aplica los cambios pendientes a la base de datos."""
-        if self.conn:
-            self.conn.commit()
-
-    def rollback(self):
-        """Deshace los cambios pendientes (útil para transacciones fallidas)."""
-        if self.conn:
-            self.conn.rollback()
-
+    def _get_connection(self):
+        """Abre y devuelve una conexión a la base de datos."""
+        conn = sqlite3.connect(self.db_name)
+        return conn
+    
     def execute_query(self, query, params=()):
-        """Ejecuta una consulta de escritura (INSERT, UPDATE, DELETE)."""
+        """Ejecuta una consulta (INSERT, UPDATE, DELETE)."""
+        conn = None
         try:
-            self.cursor.execute(query, params)
-            return self.cursor.rowcount 
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor.lastrowid
         except sqlite3.Error as e:
             print(f"Error al ejecutar la consulta: {e}")
             return None
-
-    def execute_query_with_last_id(self, query, params=()):
-        """Ejecuta un INSERT y retorna el ID de la última fila insertada."""
-        try:
-            self.cursor.execute(query, params)
-            return self.cursor.lastrowid
-        except sqlite3.Error as e:
-            print(f"Error al ejecutar INSERT y obtener ID: {e}")
-            return None
-
-    def fetch_one(self, query, params=()):
-        """Ejecuta una consulta de lectura y retorna un solo resultado."""
-        try:
-            self.cursor.execute(query, params)
-            return self.cursor.fetchone()
-        except sqlite3.Error as e:
-            print(f"Error al leer la consulta: {e}")
-            return None
+        finally:
+            if conn:
+                conn.close()
 
     def fetch_all(self, query, params=()):
-        """Ejecuta una consulta de lectura y retorna todos los resultados."""
+        """
+        Ejecuta una consulta SELECT y devuelve todos los resultados.
+        Convierte los valores 'float' (que vienen de los campos REAL de SQLite) a Decimal
+        para garantizar la precisión monetaria.
+        """
+        conn = None
+        results = []
         try:
-            self.cursor.execute(query, params)
-            return self.cursor.fetchall()
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            
+            for row in cursor.fetchall():
+                new_row = list(row)
+                for idx, item in enumerate(new_row):
+                    # Si el ítem es un float, lo convertimos a Decimal.
+                    # Esto garantiza que todos los precios se lean con precisión.
+                    if isinstance(item, float):
+                        try:
+                            # Convertimos el float a cadena antes de Decimal para evitar la pérdida de precisión
+                            new_row[idx] = Decimal(str(item)).quantize(Decimal("0.01")) 
+                        except Exception:
+                            new_row[idx] = Decimal('0.00')
+                results.append(tuple(new_row))
+            return results
         except sqlite3.Error as e:
-            print(f"Error al leer la consulta: {e}")
+            print(f"Error al obtener todos los resultados: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
 
-    def create_tables(self):
-        """Crea las tablas necesarias si no existen con la estructura final."""
+    def fetch_one(self, query, params=()):
+        """Ejecuta una consulta SELECT y devuelve el primer resultado."""
+        conn = None
         try:
-            # 1. Tabla de Usuarios
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS usuarios (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    password TEXT NOT NULL,
-                    rol TEXT NOT NULL 
-                )
-            """)
-
-            # 2. Tabla de Configuración (Tasa, Licencia, Nombre de Negocio)
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS configuracion (
-                    clave TEXT PRIMARY KEY,
-                    valor TEXT
-                )
-            """)
-
-            # 3. Tabla de Proveedores 
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS proveedores (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nombre TEXT NOT NULL,
-                    telefono TEXT,
-                    email TEXT
-                )
-            """)
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            row = cursor.fetchone()
             
-            # 4. Tabla de Inventario (¡Estructura Final CORREGIDA!)
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS inventario (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    id_cliente TEXT UNIQUE,         -- Nombre de columna correcto (buscado por PDV)
-                    producto TEXT NOT NULL,
-                    unidad_medida TEXT,             
-                    marca TEXT,                     
-                    categoria TEXT,                 
-                    proveedor_id INTEGER,           
-                    stock INTEGER NOT NULL,
-                    stock_minimo INTEGER DEFAULT 5, 
-                    precio_costo_usd REAL NOT NULL,
-                    precio_venta_usd REAL NOT NULL,
-                    FOREIGN KEY(proveedor_id) REFERENCES proveedores(id)
-                )
-            """)
-            
-            # 5. Tabla de Ventas (Encabezado)
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS ventas (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fecha_hora TEXT NOT NULL,
-                    total_usd REAL NOT NULL,
-                    tasa_bcv REAL NOT NULL,
-                    total_bs REAL NOT NULL,
-                    metodo_pago TEXT,
-                    usuario_id INTEGER,
-                    FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
-                )
-            """)
-
-            # 6. Tabla de Detalle de Venta
-            self.cursor.execute("""
-                CREATE TABLE IF NOT EXISTS detalle_venta (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    venta_id INTEGER NOT NULL,
-                    producto_id INTEGER NOT NULL,
-                    nombre_producto TEXT NOT NULL,
-                    cantidad INTEGER NOT NULL,
-                    precio_unitario_usd REAL NOT NULL,
-                    subtotal_usd REAL NOT NULL,
-                    FOREIGN KEY(venta_id) REFERENCES ventas(id),
-                    FOREIGN KEY(producto_id) REFERENCES inventario(id)
-                )
-            """)
-            
-            self.conn.commit()
-            print("Tablas verificadas/creadas exitosamente.")
-
-        except Exception as e:
-            print(f"Error al crear tablas: {e}")
-
-    def _insert_initial_data(self):
-        """Inserta el usuario Administrador y la configuración inicial."""
-        
-        # 1. Insertar el usuario administrador (Si no existe)
+            if row:
+                new_row = list(row)
+                for idx, item in enumerate(new_row):
+                    if isinstance(item, float):
+                        try:
+                            new_row[idx] = Decimal(str(item)).quantize(Decimal("0.01"))
+                        except Exception:
+                            new_row[idx] = Decimal('0.00')
+                return tuple(new_row)
+            return row
+        except sqlite3.Error as e:
+            print(f"Error al obtener un resultado: {e}")
+            return None
+        finally:
+            if conn:
+                conn.close()
+                
+    def check_user(self, username, password):
+        """Verifica las credenciales del usuario."""
+        query = "SELECT id, rol FROM usuarios WHERE usuario = ? AND password = ?"
+        conn = None
         try:
-            self.cursor.execute("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)", 
-                                ('admin', '1234', 'administrador'))
-            self.conn.commit()
-            print("Usuario 'admin' (pass: 1234) creado.")
-        except sqlite3.IntegrityError:
-            pass
-            
-        # 2. Insertar Nombre del Negocio Inicial
-        try:
-            self.cursor.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?, ?)", 
-                                ('nombre_negocio', 'PROFITUS - Negocio Ejemplo')) 
-            self.conn.commit()
-        except Exception:
-            pass
-
-        # 3. Insertar Tasa de Cambio Inicial
-        try:
-            self.cursor.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?, ?)", 
-                                ('tasa_cambio', '36.00')) 
-            self.conn.commit()
-        except Exception:
-            pass 
-
-        # 4. Insertar la Fecha de Expiración de Soporte
-        try:
-            fecha_expiracion = (datetime.now() + timedelta(days=120)).strftime('%Y-%m-%d')
-            self.cursor.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?, ?)", 
-                                ('fecha_licencia', fecha_expiracion)) 
-            self.conn.commit()
-        except Exception:
-            pass 
-
-        # 5. Insertar un proveedor por defecto 
-        try:
-            self.cursor.execute("INSERT OR IGNORE INTO proveedores (id, nombre, telefono) VALUES (?, ?, ?)", 
-                                (1, "(Sin Proveedor)", "N/A")) 
-            self.conn.commit()
-        except Exception:
-            pass
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, (username, password))
+            return cursor.fetchone()
+        except sqlite3.Error as e:
+            print(f"Error al verificar el usuario: {e}")
+            return None
+        finally:
+            if conn:
+                conn.close()
