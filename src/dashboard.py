@@ -10,7 +10,7 @@ from .config_page import ConfigPage
 
 # Definición de colores 
 ACCENT_CYAN = "#00FFFF"       
-ACCENT_GREEN = "#00c853"      
+ACCENT_GREEN = "#00c853"       
 BACKGROUND_DARK = "#0D1B2A"   
 FRAME_MID = "#1B263B"         
 LOGO_PATH = "assets/images/logo.png"
@@ -33,8 +33,9 @@ class DashboardFrame(ctk.CTkFrame):
         # 1. BARRA DE NAVEGACIÓN (Columna 0)
         self.navigation_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, width=200, corner_radius=0)
         self.navigation_frame.grid(row=0, column=0, sticky="nsew")
-        self.navigation_frame.grid_rowconfigure(7, weight=1) 
+        self.navigation_frame.grid_rowconfigure(7, weight=1) # Fila 7 contendrá el espacio flexible
         
+        # Logo
         try:
              logo_img = ctk.CTkImage(light_image=Image.open(LOGO_PATH),
                                      dark_image=Image.open(LOGO_PATH),
@@ -47,6 +48,7 @@ class DashboardFrame(ctk.CTkFrame):
                           font=ctk.CTkFont(size=20, weight="bold"), 
                           text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10))
 
+        # Título del Menú
         ctk.CTkLabel(self.navigation_frame, text="MENÚ", font=ctk.CTkFont(size=14), text_color="gray60").grid(row=1, column=0, padx=20, pady=(20, 5), sticky="w")
         
         button_args = {
@@ -56,6 +58,7 @@ class DashboardFrame(ctk.CTkFrame):
             "font": ctk.CTkFont(size=15)
         }
         
+        # Botones de navegación
         self.home_button = ctk.CTkButton(self.navigation_frame, text="🏠 Home",
                                          command=lambda: self.select_frame_by_name("home"), **button_args)
         self.home_button.grid(row=2, column=0, sticky="ew", padx=10, pady=2)
@@ -65,13 +68,30 @@ class DashboardFrame(ctk.CTkFrame):
         self.inventory_button.grid(row=3, column=0, sticky="ew", padx=10, pady=2)
         
         self.pos_button = ctk.CTkButton(self.navigation_frame, text="🛒 PDV (POS)",
-                                        command=lambda: self.select_frame_by_name("pos"), **button_args)
+                                         command=lambda: self.select_frame_by_name("pos"), **button_args)
         self.pos_button.grid(row=4, column=0, sticky="ew", padx=10, pady=2)
         
         self.config_button = ctk.CTkButton(self.navigation_frame, text="⚙️ Configuración",
-                                           command=lambda: self.select_frame_by_name("config"), **button_args)
+                                            command=lambda: self.select_frame_by_name("config"), **button_args)
         self.config_button.grid(row=5, column=0, sticky="ew", padx=10, pady=2)
         
+        # --- NUEVA SECCIÓN: INDICADOR DE TASA DE CAMBIO (Bs/USD) ---
+        self.rate_frame = ctk.CTkFrame(self.navigation_frame, fg_color="transparent")
+        self.rate_frame.grid(row=6, column=0, sticky="ew", padx=10, pady=(15, 5))
+        self.rate_frame.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(self.rate_frame, text="TASA (Bs/USD)", 
+                     font=ctk.CTkFont(size=12, weight="bold"), 
+                     text_color="gray70").grid(row=0, column=0, sticky="w")
+        
+        self.exchange_rate_label = ctk.CTkLabel(self.rate_frame, 
+                                                text="Cargando...", 
+                                                font=ctk.CTkFont(size=16, weight="bold"), 
+                                                text_color=ACCENT_GREEN)
+        self.exchange_rate_label.grid(row=1, column=0, sticky="w")
+        # -----------------------------------------------------------
+        
+        # Botón de Cerrar Sesión
         ctk.CTkButton(self.navigation_frame, text="❌ Cerrar Sesión", 
                       command=master.destroy, 
                       fg_color="#c0392b", hover_color="#a13024",
@@ -83,10 +103,28 @@ class DashboardFrame(ctk.CTkFrame):
         self.content_container.grid_columnconfigure(0, weight=1)
         self.content_container.grid_rowconfigure(0, weight=1)
 
+        # Cargar y mostrar la tasa de cambio inicial
+        self.update_exchange_rate_label()
+
         # 3. INICIALIZACIÓN DE PÁGINAS
         self._create_pages()
         
         self.select_frame_by_name("home")
+
+    def update_exchange_rate_label(self):
+        """Carga la tasa de cambio actual desde la base de datos y actualiza el label."""
+        try:
+            # Llama al nuevo método de la base de datos
+            rate = self.db.get_exchange_rate() 
+            # Formatea a dos decimales con coma como separador de miles si aplica, aunque para tasas no suele ser necesario
+            # Usamos :,.2f para asegurar el formato numérico correcto con dos decimales.
+            formatted_rate = f"Bs. {rate:,.2f}" 
+            self.exchange_rate_label.configure(text=formatted_rate)
+            return rate 
+        except Exception as e:
+            print(f"Error al cargar la tasa de cambio: {e}")
+            self.exchange_rate_label.configure(text="Error de carga")
+            return None
 
 
     def _create_pages(self):
@@ -110,9 +148,11 @@ class DashboardFrame(ctk.CTkFrame):
         self.pages["home"] = home_frame
 
         # 2. Páginas funcionales
+        # Pasamos la función de actualización de la tasa a ConfigPage para que pueda refrescar el dashboard
         self.pages["inventory"] = InventoryPage(self.content_container, self.db, self.current_user_id)
         self.pages["pos"] = PosPage(self.content_container, self.db, self.current_user_id)
-        self.pages["config"] = ConfigPage(self.content_container, self.db, self.current_user_id)
+        # IMPORTANTE: Pasamos el método de actualización al constructor de ConfigPage
+        self.pages["config"] = ConfigPage(self.content_container, self.db, self.current_user_id, self.update_exchange_rate_label)
 
 
     def select_frame_by_name(self, name):
@@ -129,7 +169,9 @@ class DashboardFrame(ctk.CTkFrame):
                 # Si es Inventario, llamar a load_products para recargar datos
                 if page_name == "inventory":
                     try:
-                        page_frame.load_products()
+                        # También actualizamos la tasa en el inventario por si se usa en los cálculos
+                        current_rate = self.update_exchange_rate_label() 
+                        page_frame.load_products(current_rate)
                     except AttributeError:
                         pass
                 
