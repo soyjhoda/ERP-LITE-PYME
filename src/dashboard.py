@@ -33,7 +33,7 @@ class DashboardFrame(ctk.CTkFrame):
         # 1. BARRA DE NAVEGACIÓN (Columna 0)
         self.navigation_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, width=200, corner_radius=0)
         self.navigation_frame.grid(row=0, column=0, sticky="nsew")
-        self.navigation_frame.grid_rowconfigure(7, weight=1) # Fila 7 contendrá el espacio flexible
+        self.navigation_frame.grid_rowconfigure(7, weight=1) 
         
         # Logo
         try:
@@ -116,8 +116,7 @@ class DashboardFrame(ctk.CTkFrame):
         try:
             # Llama al nuevo método de la base de datos
             rate = self.db.get_exchange_rate() 
-            # Formatea a dos decimales con coma como separador de miles si aplica, aunque para tasas no suele ser necesario
-            # Usamos :,.2f para asegurar el formato numérico correcto con dos decimales.
+            # Formatea
             formatted_rate = f"Bs. {rate:,.2f}" 
             self.exchange_rate_label.configure(text=formatted_rate)
             return rate 
@@ -148,8 +147,9 @@ class DashboardFrame(ctk.CTkFrame):
         self.pages["home"] = home_frame
 
         # 2. Páginas funcionales
-        # Pasamos la función de actualización de la tasa a ConfigPage para que pueda refrescar el dashboard
+        # La InventoryPage ya no necesita argumentos extra en su constructor original
         self.pages["inventory"] = InventoryPage(self.content_container, self.db, self.current_user_id)
+        # La PosPage ya no necesita argumentos extra en su constructor original
         self.pages["pos"] = PosPage(self.content_container, self.db, self.current_user_id)
         # IMPORTANTE: Pasamos el método de actualización al constructor de ConfigPage
         self.pages["config"] = ConfigPage(self.content_container, self.db, self.current_user_id, self.update_exchange_rate_label)
@@ -169,11 +169,22 @@ class DashboardFrame(ctk.CTkFrame):
                 # Si es Inventario, llamar a load_products para recargar datos
                 if page_name == "inventory":
                     try:
-                        # También actualizamos la tasa en el inventario por si se usa en los cálculos
+                        # Obtenemos la tasa actual (aunque no la use, es bueno mantener el llamado)
                         current_rate = self.update_exchange_rate_label() 
+                        
+                        # Llama a load_products (ahora preparado para aceptar 'current_rate')
                         page_frame.load_products(current_rate)
                     except AttributeError:
                         pass
+                
+                # Si es POS, actualizar la tasa localmente
+                elif page_name == "pos":
+                    # Cargamos la tasa actual del Dashboard
+                    current_rate = self.update_exchange_rate_label()
+                    # Si el PosPage tiene un método para actualizar la tasa, lo llamamos
+                    if hasattr(page_frame, 'update_rate'):
+                        page_frame.update_rate(current_rate)
+
                 
                 page_frame.grid(row=0, column=0, sticky="nsew")
                 self.current_page = page_frame
