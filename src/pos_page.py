@@ -4,10 +4,10 @@ import math
 
 # Definición de colores
 ACCENT_CYAN = "#00FFFF"       
-ACCENT_GREEN = "#00c853"      
+ACCENT_GREEN = "#00c853"       
 BACKGROUND_DARK = "#0D1B2A"   
 FRAME_MID = "#1B263B"         
-FRAME_DARK = "#1B263B"        
+FRAME_DARK = "#1B263B"         
 
 class PosPage(ctk.CTkFrame):
     """Clase para la página de Punto de Venta (POS)."""
@@ -18,6 +18,7 @@ class PosPage(ctk.CTkFrame):
         
         # Estado del Carrito: {id_producto: {'nombre': str, 'precio': float, 'cantidad': int}}
         self.cart = {}
+        self.current_exchange_rate = 36.00 # Valor por defecto, se actualiza al cargar la página
         
         # 0. Configuración de Estilos TTK para la tabla del carrito
         style = ttk.Style(self)
@@ -52,9 +53,9 @@ class PosPage(ctk.CTkFrame):
         
         # Campo de Búsqueda
         self.search_entry = ctk.CTkEntry(self.left_panel, 
-                                         placeholder_text="Escriba código o nombre...", 
-                                         width=350, height=40, 
-                                         fg_color="#2c3e50", border_color=ACCENT_CYAN, border_width=1)
+                                            placeholder_text="Escriba código o nombre...", 
+                                            width=350, height=40, 
+                                            fg_color="#2c3e50", border_color=ACCENT_CYAN, border_width=1)
         self.search_entry.bind("<KeyRelease>", self.search_products)
         self.search_entry.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
 
@@ -66,9 +67,9 @@ class PosPage(ctk.CTkFrame):
 
         # Treeview de Resultados de Búsqueda
         self.product_tree = ttk.Treeview(self.search_results_frame, 
-                                         columns=("code", "name", "price", "stock"), 
-                                         show='headings', 
-                                         style="Cart.Treeview")
+                                            columns=("code", "name", "price", "stock"), 
+                                            show='headings', 
+                                            style="Cart.Treeview")
         
         self.product_tree.heading("code", text="Código"); self.product_tree.column("code", width=80, stretch=ctk.NO)
         self.product_tree.heading("name", text="Producto"); self.product_tree.column("name", minwidth=150, stretch=ctk.YES)
@@ -99,9 +100,9 @@ class PosPage(ctk.CTkFrame):
 
         # Treeview del Carrito
         self.cart_tree = ttk.Treeview(self.cart_frame, 
-                                      columns=("id", "name", "qty", "price", "subtotal"), 
-                                      show='headings',
-                                      style="Cart.Treeview")
+                                        columns=("id", "name", "qty", "price", "subtotal"), 
+                                        show='headings',
+                                        style="Cart.Treeview")
         
         self.cart_tree.heading("id", text="ID", anchor=ctk.CENTER); self.cart_tree.column("id", width=30, stretch=ctk.NO, anchor=ctk.CENTER)
         self.cart_tree.heading("name", text="Producto"); self.cart_tree.column("name", minwidth=250, stretch=ctk.YES)
@@ -138,6 +139,12 @@ class PosPage(ctk.CTkFrame):
         # Carga inicial de todos los productos en el panel de búsqueda
         self.load_all_products_for_search()
 
+    def update_rate(self, new_rate):
+        """Método llamado desde Dashboard para actualizar la tasa de cambio local."""
+        if new_rate is not None:
+            self.current_exchange_rate = new_rate
+            # El precio en Bs de la tabla de productos no se ve afectado porque se guarda en USD,
+            # pero el POS puede usar esta tasa para referencias futuras si fuera necesario.
 
     def load_all_products_for_search(self):
         """Carga todos los productos en la tabla de resultados de búsqueda al inicio."""
@@ -162,22 +169,21 @@ class PosPage(ctk.CTkFrame):
         products = self.db.fetch_all(sql_query, (search_term, search_term))
 
         for prod in products:
-            id_prod, code, name, price, stock = prod
-            # Añadir una etiqueta con el ID en el Treeview para referencia
+            id_prod, code, name, price_display, stock_real = prod
+            
             tag = f"id_{id_prod}" 
             
-            # Verificar si el stock es cero y aplicar un color de fondo (tag)
+            # CLAVE: Modificación para calcular el stock disponible (Real - En Carrito)
+            stock_en_carrito = self.cart.get(id_prod, {}).get('cantidad', 0)
+            stock_disponible = int(stock_real) - stock_en_carrito
+
             row_tags = ()
-            if stock <= 0:
+            if stock_disponible <= 0:
                 row_tags = ('out_of_stock',)
                 self.product_tree.tag_configure('out_of_stock', foreground='red', font=('Arial', 11, 'bold'))
 
-            # CLAVE: Modificación para calcular el stock disponible (Real - En Carrito)
-            stock_en_carrito = self.cart.get(id_prod, {}).get('cantidad', 0)
-            stock_disponible = int(stock) - stock_en_carrito
-
             self.product_tree.insert("", "end", iid=tag, 
-                                     values=(code, name, f"Bs/{price:,.2f}", stock_disponible),
+                                     values=(code, name, f"Bs/{price_display:,.2f}", stock_disponible),
                                      tags=row_tags)
 
     
@@ -189,22 +195,18 @@ class PosPage(ctk.CTkFrame):
 
         values = self.product_tree.item(selected_item, 'values')
         
-        # El stock disponible ahora está en values[3] (calculado por search_products)
         try:
             stock_disponible_en_vista = int(values[3])
         except (ValueError, IndexError):
-            # Esto puede pasar si se hace doble clic en un espacio vacío, aunque la verificación de focus debería evitarlo.
             return
         
         if stock_disponible_en_vista <= 0:
             messagebox.showwarning("Stock", "Stock insuficiente para añadir este producto.")
             return
 
-        # Extraer el ID del IID (que guardamos como "id_X")
         product_id = int(selected_item.split('_')[1])
         name = values[1]
         
-        # Limpiar y convertir el precio
         try:
             price_str = values[2].replace("Bs/", "").replace(",", "")
             price = float(price_str)
@@ -213,7 +215,6 @@ class PosPage(ctk.CTkFrame):
             return
 
         # 1. Añadir/Actualizar en el estado del carrito
-        # Ya verificamos que stock_disponible_en_vista > 0, así que podemos aumentar la cantidad.
         if product_id in self.cart:
             self.cart[product_id]['cantidad'] += 1
         else:
@@ -274,7 +275,10 @@ class PosPage(ctk.CTkFrame):
         # Verificar stock máximo si estamos aumentando
         if adjustment > 0:
             real_stock = self.get_real_stock(product_id)
-            if new_qty > real_stock:
+            # Stock actual disponible = Stock real - (cantidad actual en carrito)
+            stock_disponible_para_incremento = real_stock - self.cart[product_id]['cantidad']
+            
+            if adjustment > stock_disponible_para_incremento:
                 messagebox.showwarning("Stock", f"No puedes añadir más. Stock máximo disponible es {real_stock}.")
                 return
         
@@ -349,41 +353,42 @@ class PosPage(ctk.CTkFrame):
         
     
     def process_sale(self):
-        """Simula el procesamiento de la venta y realiza el descuento de stock en la DB."""
+        """
+        Llama al método transaccional de la DB para registrar la venta y descontar el stock.
+        """
         if not self.cart:
             messagebox.showwarning("Venta", "El carrito está vacío. Añade productos para procesar la venta.")
             return
 
-        # NOTA: En una app real, esta lógica debería estar dentro de una transacción para garantizar atomicidad.
         try:
-            # Extraer el total antes de resetear el carrito
-            total_final = float(self.total_label.cget("text").split('/')[-1].replace(",", "").strip())
+            # 1. Extraer el total y la tasa antes de llamar a la transacción
+            # Se extrae el número del label, eliminando "TOTAL: Bs/ " y comas
+            total_final_bs = float(self.total_label.cget("text").split('/')[-1].replace(",", "").strip())
+            current_rate = self.current_exchange_rate # Usamos la tasa que se cargó desde el Dashboard
 
-            # 1. Descontar Stock en la Base de Datos
-            for p_id, data in self.cart.items():
-                cantidad_vendida = data['cantidad']
-                
-                # Obtener stock actual real
-                current_stock_data = self.db.fetch_one("SELECT stock FROM productos WHERE id = ?", (p_id,))
-                
-                if current_stock_data is None:
-                    messagebox.showerror("Error", f"Producto ID {p_id} no encontrado.")
-                    continue
-                    
-                current_stock = current_stock_data[0]
-                new_stock = current_stock - cantidad_vendida
-                
-                # Actualizar stock
-                self.db.execute_query("UPDATE productos SET stock = ? WHERE id = ?", (new_stock, p_id))
+            # 2. Llamar al método transaccional de la base de datos
+            # Este método se encarga de: 1. Verificar stock. 2. Registrar Venta. 3. Descontar Stock.
+            success, message = self.db.process_sale_transaction(
+                self.cart, 
+                total_final_bs, 
+                current_rate, 
+                self.user_id # ID del usuario actual
+            )
 
-            # 2. Resumen y Limpieza
-            summary = f"Venta procesada con éxito!\n\nProductos: {len(self.cart)} artículos únicos.\nTotal Final: Bs/ {total_final:,.2f}"
-            messagebox.showinfo("Venta Exitosa", summary)
+            if success:
+                # Venta Exitosa: Limpiar y notificar
+                summary = f"Venta procesada con éxito!\n\nProductos: {len(self.cart)} artículos únicos.\nTotal Final: Bs/ {total_final_bs:,.2f}"
+                messagebox.showinfo("Venta Exitosa", summary)
+                
+                # Limpiar el carrito después de la venta
+                self.cart = {}
+                self.update_cart_display()
+                self.search_products() # Recargar la búsqueda para mostrar el stock actualizado
+            else:
+                # Venta Fallida (por stock insuficiente u otro error de DB)
+                messagebox.showerror("Error de Venta", f"No se pudo procesar la venta. Razón: {message}")
             
-            # Limpiar el carrito después de la venta
-            self.cart = {}
-            self.update_cart_display()
-            self.search_products() # Recargar la búsqueda para mostrar el stock actualizado
-            
+        except ValueError:
+            messagebox.showerror("Error", "El total de la venta no es un número válido.")
         except Exception as e:
-            messagebox.showerror("Error de Venta", f"Ocurrió un error al procesar la venta: {e}")
+            messagebox.showerror("Error Inesperado", f"Ocurrió un error al procesar la venta: {e}")
