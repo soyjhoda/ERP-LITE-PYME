@@ -31,6 +31,7 @@ class DatabaseManager:
     def connect(self):
         """Establece la conexión con la base de datos."""
         try:
+            # Conexión principal
             self.conn = sqlite3.connect(DB_FILE)
             self.conn.row_factory = sqlite3.Row # Permite acceder a las columnas por nombre
             print(f"Conectado a la DB: {DB_FILE}")
@@ -283,6 +284,35 @@ class DatabaseManager:
             INSERT OR REPLACE INTO configuracion (key, value)
             VALUES ('exchange_rate', ?)
         """, (str(rate),))
+
+    # --- Función de Backup de la DB (Nueva) ---
+    def perform_backup(self, destination_path):
+        """
+        Realiza una copia de seguridad (backup) de la base de datos actual 
+        en la ruta de destino especificada. Utiliza la conexión existente (self.conn) 
+        y crea una nueva conexión para el destino.
+        """
+        if not self.conn:
+            return False, "La conexión a la base de datos no está activa."
+            
+        try:
+            # 1. Crear una nueva conexión a la ruta de destino
+            dest_conn = sqlite3.connect(destination_path)
+            
+            # 2. Usar el método backup() de SQLite para copiar los datos
+            # El método backup() realiza una copia en caliente de la DB.
+            with dest_conn:
+                self.conn.backup(dest_conn)
+            
+            dest_conn.close()
+            return True, "Backup realizado con éxito."
+        
+        except sqlite3.Error as e:
+            print(f"Error al realizar el backup de SQLite: {e}")
+            return False, f"Error de SQLite: {e}"
+        except Exception as e:
+            print(f"Error inesperado durante el backup: {e}")
+            return False, f"Error inesperado: {e}"
 
 
     # --- Funciones CRUD de Productos (Implementadas) ---

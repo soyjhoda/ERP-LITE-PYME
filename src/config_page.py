@@ -1,12 +1,13 @@
 import customtkinter as ctk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog # Añadido filedialog
+from datetime import datetime # Añadido datetime
 from .utils import is_valid_float
 
 # Definiciones de estilo
-ACCENT_CYAN = "#00FFFF"      
+ACCENT_CYAN = "#00FFFF"
 ACCENT_GREEN = "#00c853"
 ACCENT_RED = "#c0392b"
-BACKGROUND_DARK = "#0D1B2A"  
+BACKGROUND_DARK = "#0D1B2A"
 FRAME_MID = "#1B263B"
 FRAME_LIGHT = "#2c3e50"
 
@@ -202,17 +203,43 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showerror("Error al Guardar", f"Ocurrió un error al guardar la tasa: {e}")
 
     def create_backup(self):
-        """Inicia el proceso de creación de la copia de seguridad de la base de datos."""
+        """
+        Inicia el proceso de creación de la copia de seguridad de la base de datos, 
+        incluyendo el diálogo para seleccionar la ruta.
+        """
         # Restricción: Solo Administradores pueden hacer backup
         if self.user_role != "Administrador Total":
             messagebox.showwarning("Permiso Denegado", "Solo el Administrador Total puede crear copias de seguridad.")
             return
         
         try:
-            # Llama a la función de la DB Manager para realizar el backup
-            backup_path = self.db.create_backup()
-            messagebox.showinfo("Backup Creado", 
-                                f"Copia de seguridad de la base de datos creada exitosamente.\n\n"
-                                f"Ruta: {backup_path}")
+            # 1. Generar nombre de archivo por defecto con fecha y hora
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"profitus_backup_{timestamp}.db"
+            
+            # 2. Abrir diálogo para guardar el archivo
+            destination_path = filedialog.asksaveasfilename(
+                defaultextension=".db",
+                initialfile=default_filename,
+                title="Guardar Copia de Seguridad de la Base de Datos",
+                filetypes=[("Archivos de Base de Datos SQLite", "*.db"), ("Todos los archivos", "*.*")]
+            )
+            
+            if not destination_path:
+                # El usuario canceló el diálogo
+                messagebox.showinfo("Cancelado", "El proceso de copia de seguridad fue cancelado.")
+                return
+                
+            # 3. Llamar a la función de la DB Manager para realizar el backup
+            # NOTA: La función en db_manager.py ha sido renombrada a 'perform_backup'
+            success, message = self.db.perform_backup(destination_path)
+            
+            if success:
+                messagebox.showinfo("Backup Creado", 
+                                    f"Copia de seguridad de la base de datos creada exitosamente.\n\n"
+                                    f"Ruta: {destination_path}")
+            else:
+                 messagebox.showerror("Error de Backup", f"No se pudo crear la copia de seguridad:\n{message}")
+                 
         except Exception as e:
-            messagebox.showerror("Error de Backup", f"No se pudo crear la copia de seguridad: {e}")
+            messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante el backup: {e}")
