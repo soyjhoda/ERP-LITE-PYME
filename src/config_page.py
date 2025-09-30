@@ -1,6 +1,6 @@
 import customtkinter as ctk
-from tkinter import messagebox, ttk, filedialog # Añadido filedialog
-from datetime import datetime # Añadido datetime
+from tkinter import messagebox, ttk, filedialog
+from datetime import datetime
 from .utils import is_valid_float
 
 # Definiciones de estilo
@@ -15,12 +15,12 @@ class ConfigPage(ctk.CTkFrame):
     """Panel de Administración centralizado para tareas sensibles (Tasa, Usuarios, Seguridad)."""
     
     # CONSTRUCTOR ACTUALIZADO: Acepta y guarda el rol del usuario
-    def __init__(self, master, db_manager, user_id, update_rate_callback, user_role): 
+    def __init__(self, master, db_manager, user_id, update_rate_callback, user_role):
         super().__init__(master, fg_color=BACKGROUND_DARK)
         self.db = db_manager
         self.user_id = user_id
         self.user_role = user_role # ¡Nuevo! Rol del usuario actual
-        self.update_rate_callback = update_rate_callback 
+        self.update_rate_callback = update_rate_callback
         
         self.grid_rowconfigure(0, weight=1) # El TabView ocupa todo el espacio
         self.grid_columnconfigure(0, weight=1)
@@ -37,8 +37,8 @@ class ConfigPage(ctk.CTkFrame):
         title_frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(title_frame, text="🛡️ PANEL DE ADMINISTRACIÓN", 
-                     font=ctk.CTkFont(size=26, weight="bold"), 
-                     text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 10))
+                             font=ctk.CTkFont(size=26, weight="bold"), 
+                             text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 10))
 
         # --- TabView para organizar secciones ---
         self.tabview = ctk.CTkTabview(self, fg_color=BACKGROUND_DARK, segmented_button_fg_color=FRAME_MID)
@@ -80,14 +80,14 @@ class ConfigPage(ctk.CTkFrame):
         rate_card.grid_columnconfigure((0, 1), weight=1)
         
         ctk.CTkLabel(rate_card, text="Tasa de Cambio Actual (Bs/USD)", 
-                     font=ctk.CTkFont(size=18, weight="bold"), 
-                     text_color="white").grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(15, 5))
+                             font=ctk.CTkFont(size=18, weight="bold"), 
+                             text_color="white").grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(15, 5))
         
         # Valor Actual
         ctk.CTkLabel(rate_card, text="Valor Actual:", text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(10, 0))
         self.current_rate_label = ctk.CTkLabel(rate_card, text="Cargando...", 
-                                               font=ctk.CTkFont(size=22, weight="bold"), 
-                                               text_color=ACCENT_GREEN)
+                                                             font=ctk.CTkFont(size=22, weight="bold"), 
+                                                             text_color=ACCENT_GREEN)
         self.current_rate_label.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 20))
         
         # Establecer Nueva Tasa
@@ -97,10 +97,10 @@ class ConfigPage(ctk.CTkFrame):
         
         # Botón para guardar
         save_button = ctk.CTkButton(rate_card, text="💾 Guardar Tasa", 
-                                    command=self.save_exchange_rate, 
-                                    fg_color=ACCENT_CYAN, 
-                                    text_color=BACKGROUND_DARK,
-                                    hover_color=ACCENT_CYAN.lower().replace('f', 'e'))
+                                         command=self.save_exchange_rate, 
+                                         fg_color=ACCENT_CYAN, 
+                                         text_color=BACKGROUND_DARK,
+                                         hover_color=ACCENT_CYAN.lower().replace('f', 'e'))
         save_button.grid(row=3, column=0, columnspan=2, pady=(0, 20))
 
     def _setup_users_tab(self, tab_frame):
@@ -109,8 +109,8 @@ class ConfigPage(ctk.CTkFrame):
         tab_frame.grid_rowconfigure(1, weight=1)
         
         ctk.CTkLabel(tab_frame, text="👩‍💻 GESTIÓN DE CUENTAS DE USUARIO", 
-                     font=ctk.CTkFont(size=20, weight="bold"), 
-                     text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+                             font=ctk.CTkFont(size=20, weight="bold"), 
+                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
 
         # Placeholder temporal
         placeholder = ctk.CTkFrame(tab_frame, fg_color=FRAME_LIGHT, corner_radius=10)
@@ -119,32 +119,49 @@ class ConfigPage(ctk.CTkFrame):
         placeholder.grid_rowconfigure(0, weight=1)
         
         ctk.CTkLabel(placeholder, text="[ÁREA DE TRABAJO EN LA FASE 4]", 
-                     font=ctk.CTkFont(size=18), text_color="gray50").grid(row=0, column=0)
+                             font=ctk.CTkFont(size=18), text_color="gray50").grid(row=0, column=0)
         
     def _setup_security_tab(self, tab_frame):
         """Configura la pestaña de Herramientas y Seguridad (Backup, Info)."""
         tab_frame.grid_columnconfigure(0, weight=1)
-        tab_frame.grid_rowconfigure(1, weight=1)
+        tab_frame.grid_rowconfigure(2, weight=1) # Ajustamos rowconfigure para dar espacio a dos tarjetas
 
         ctk.CTkLabel(tab_frame, text="🔑 HERRAMIENTAS Y COPIA DE SEGURIDAD", 
-                     font=ctk.CTkFont(size=20, weight="bold"), 
-                     text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+                             font=ctk.CTkFont(size=20, weight="bold"), 
+                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
 
-        # Tarjeta de Backup
+        # --- TARJETA DE BACKUP (Exportar) ---
         backup_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
-        backup_card.grid(row=1, column=0, sticky="nw", padx=20, pady=(10, 20))
+        backup_card.grid(row=1, column=0, sticky="ew", padx=20, pady=(10, 5))
         backup_card.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(backup_card, text="Copia de Seguridad (Backup)", 
-                     font=ctk.CTkFont(size=16, weight="bold"), 
-                     text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
+        ctk.CTkLabel(backup_card, text="Copia de Seguridad (Exportar)", 
+                             font=ctk.CTkFont(size=16, weight="bold"), 
+                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
         
-        ctk.CTkLabel(backup_card, text="Guarda una copia de seguridad de la base de datos (profitus.db).", 
-                     text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
+        ctk.CTkLabel(backup_card, text="Guarda una copia de seguridad de la base de datos (profitus.db) en una ruta externa.", 
+                             text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
         ctk.CTkButton(backup_card, text="⬇️ Generar Backup", command=self.create_backup, 
-                      fg_color=ACCENT_GREEN, hover_color="#008a38",
-                      font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                              fg_color=ACCENT_GREEN, hover_color="#008a38",
+                              font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                              
+        # --- TARJETA DE RESTAURACIÓN (Importar) ---
+        restore_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
+        restore_card.grid(row=2, column=0, sticky="ew", padx=20, pady=(5, 20))
+        restore_card.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(restore_card, text="Restaurar Base de Datos (Importar)", 
+                             font=ctk.CTkFont(size=16, weight="bold"), 
+                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
+        
+        ctk.CTkLabel(restore_card, text="🚨 ¡PELIGRO! Reemplaza la DB actual (profitus.db) con un archivo de backup. REQUIERE REINICIO.", 
+                             text_color=ACCENT_RED).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
+        
+        # El botón llama a la nueva función de restauración
+        ctk.CTkButton(restore_card, text="⬆️ Restaurar desde Backup", command=self.restore_database, 
+                              fg_color=ACCENT_RED, hover_color="#8b0000",
+                              font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
 
 
     # =======================================================================
@@ -184,8 +201,8 @@ class ConfigPage(ctk.CTkFrame):
         try:
             new_rate_float = float(new_rate_str)
             if new_rate_float <= 0:
-                 messagebox.showerror("Error de Valor", "La tasa de cambio debe ser mayor a cero.")
-                 return
+                messagebox.showerror("Error de Valor", "La tasa de cambio debe ser mayor a cero.")
+                return
 
             # 1. Guardar en la base de datos
             self.db.set_exchange_rate(new_rate_float)
@@ -231,15 +248,55 @@ class ConfigPage(ctk.CTkFrame):
                 return
                 
             # 3. Llamar a la función de la DB Manager para realizar el backup
-            # NOTA: La función en db_manager.py ha sido renombrada a 'perform_backup'
             success, message = self.db.perform_backup(destination_path)
             
             if success:
                 messagebox.showinfo("Backup Creado", 
-                                    f"Copia de seguridad de la base de datos creada exitosamente.\n\n"
-                                    f"Ruta: {destination_path}")
+                                        f"Copia de seguridad de la base de datos creada exitosamente.\n\n"
+                                        f"Ruta: {destination_path}")
             else:
-                 messagebox.showerror("Error de Backup", f"No se pudo crear la copia de seguridad:\n{message}")
-                 
+                messagebox.showerror("Error de Backup", f"No se pudo crear la copia de seguridad:\n{message}")
+                
         except Exception as e:
             messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante el backup: {e}")
+
+    def restore_database(self):
+        """
+        Inicia el proceso de restauración de la base de datos desde un archivo de backup.
+        """
+        # Restricción: Solo Administradores pueden restaurar
+        if self.user_role != "Administrador Total":
+            messagebox.showwarning("Permiso Denegado", "Solo el Administrador Total puede restaurar la base de datos.")
+            return
+
+        # Advertencia de seguridad crucial
+        if not messagebox.askyesno("Confirmar Restauración (Peligro)", 
+                                        "🚨 ¡ADVERTENCIA! Este proceso **REEMPLAZARÁ PERMANENTEMENTE** la base de datos actual.\n"
+                                        "Cualquier dato añadido desde el último backup se perderá.\n\n"
+                                        "¿Está SEGURO que desea continuar con la restauración?"):
+            return # El usuario canceló la operación
+        
+        try:
+            # 1. Abrir diálogo para seleccionar el archivo de backup
+            source_path = filedialog.askopenfilename(
+                title="Seleccionar Archivo de Base de Datos para Restaurar",
+                filetypes=[("Archivos de Base de Datos SQLite", "*.db")]
+            )
+            
+            if not source_path:
+                messagebox.showinfo("Cancelado", "El proceso de restauración fue cancelado.")
+                return
+                
+            # 2. Llamar a la función de la DB Manager para realizar la restauración
+            success, message = self.db.restore_backup(source_path)
+            
+            if success:
+                # Si la restauración es exitosa, pedimos al usuario que reinicie la app
+                messagebox.showinfo("Restauración Exitosa", 
+                                        f"{message}\n\n"
+                                        "***La aplicación DEBE REINICIARSE para cargar los datos restaurados.***")
+            else:
+                messagebox.showerror("Error de Restauración", f"No se pudo restaurar la base de datos:\n{message}")
+                
+        except Exception as e:
+            messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante la restauración: {e}")

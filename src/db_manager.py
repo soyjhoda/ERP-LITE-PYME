@@ -1,7 +1,9 @@
 import sqlite3
 from sqlite3 import Error
 from datetime import datetime
-import hashlib # Importamos hashlib para hashear contraseñas
+import hashlib 
+import os # Importado para manejo de archivos
+import shutil # Importado para copiar/reemplazar archivos
 
 # Nombre del archivo de la base de datos
 DB_FILE = 'profitus.db'
@@ -23,6 +25,7 @@ class DatabaseManager:
     
     def __init__(self):
         """Inicializa la conexión con la base de datos y crea tablas si no existen."""
+        self.db_path = DB_FILE # Guardamos la ruta del archivo principal
         self.conn = None
         self.connect()
         self.create_default_tables() 
@@ -32,9 +35,9 @@ class DatabaseManager:
         """Establece la conexión con la base de datos."""
         try:
             # Conexión principal
-            self.conn = sqlite3.connect(DB_FILE)
+            self.conn = sqlite3.connect(self.db_path)
             self.conn.row_factory = sqlite3.Row # Permite acceder a las columnas por nombre
-            print(f"Conectado a la DB: {DB_FILE}")
+            print(f"Conectado a la DB: {self.db_path}")
         except Error as e:
             print(f"Error al conectar con SQLite: {e}")
             
@@ -42,10 +45,14 @@ class DatabaseManager:
         """Cierra la conexión con la base de datos."""
         if self.conn:
             self.conn.close()
+            self.conn = None # Establecer a None para indicar que está cerrada
             print("Conexión a la DB cerrada.")
 
     def execute_query(self, query, params=()):
         """Ejecuta consultas de modificación (INSERT, UPDATE, DELETE)."""
+        if not self.conn:
+            print("Error: Conexión a DB no activa.")
+            return None
         try:
             cursor = self.conn.cursor()
             cursor.execute(query, params)
@@ -58,6 +65,8 @@ class DatabaseManager:
 
     def fetch_one(self, query, params=()):
         """Ejecuta consultas de selección y devuelve una sola fila."""
+        if not self.conn:
+            return None
         try:
             cursor = self.conn.cursor()
             cursor.execute(query, params)
@@ -68,6 +77,8 @@ class DatabaseManager:
 
     def fetch_all(self, query, params=()):
         """Ejecuta consultas de selección y devuelve todas las filas."""
+        if not self.conn:
+            return []
         try:
             cursor = self.conn.cursor()
             cursor.execute(query, params)
@@ -78,6 +89,7 @@ class DatabaseManager:
 
     def _check_and_add_column(self, table_name, column_name, column_type):
         """Verifica si una columna existe y la añade si no. (Para migraciones)"""
+        if not self.conn: return
         try:
             # Intenta seleccionar la columna para ver si existe
             self.conn.execute(f"SELECT {column_name} FROM {table_name} LIMIT 1")
@@ -285,12 +297,11 @@ class DatabaseManager:
             VALUES ('exchange_rate', ?)
         """, (str(rate),))
 
-    # --- Función de Backup de la DB (Nueva) ---
+    # --- Función de Backup de la DB (Exportar) ---
     def perform_backup(self, destination_path):
         """
         Realiza una copia de seguridad (backup) de la base de datos actual 
-        en la ruta de destino especificada. Utiliza la conexión existente (self.conn) 
-        y crea una nueva conexión para el destino.
+        en la ruta de destino especificada.
         """
         if not self.conn:
             return False, "La conexión a la base de datos no está activa."
@@ -300,7 +311,6 @@ class DatabaseManager:
             dest_conn = sqlite3.connect(destination_path)
             
             # 2. Usar el método backup() de SQLite para copiar los datos
-            # El método backup() realiza una copia en caliente de la DB.
             with dest_conn:
                 self.conn.backup(dest_conn)
             
@@ -313,7 +323,45 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error inesperado durante el backup: {e}")
             return False, f"Error inesperado: {e}"
+            
+    # --- FUNCIÓN NUEVA: Restauración de la DB (Importar) ---
+    def restore_backup(self, source_path):
+        """
+        Restaura la base de datos principal copiando el archivo de backup 
+        desde la ruta especificada. Cierra la conexión actual antes de copiar.
+        """
+        # 1. Verificar si el archivo de origen existe
+        if not os.path.exists(source_path):
+            return False, "Error: El archivo de backup de origen no fue encontrado."
 
+        # 2. Obtener la ruta del archivo principal (profitus.db)
+        main_db_path = self.db_path
+
+        # 3. Intentar cerrar la conexión a la base de datos (CRUCIAL para poder reemplazar el archivo)
+        try:
+            self.close() # Llama a la función 'close' que también pone self.conn = None
+        except Exception as e:
+            # Si hay un error al cerrar, intentamos reabrir por si acaso y reportamos el error
+            self.connect() 
+            return False, f"Error al intentar cerrar la conexión a la DB: {e}"
+
+        # 4. Realizar la copia del archivo (reemplazando el archivo actual)
+        try:
+            # shutil.copy2 copia el archivo, incluyendo metadatos, y reemplaza el destino.
+            shutil.copy2(source_path, main_db_path) 
+
+            # 5. Volver a abrir la conexión (preparación para el siguiente uso)
+            self.connect() 
+            
+            return True, f"Base de datos restaurada exitosamente desde: {source_path}"
+            
+        except shutil.Error as e:
+            self.connect() # Reabrir conexión por si acaso
+            return False, f"Error de copia de archivo (permisos o en uso): {e}"
+            
+        except Exception as e:
+            self.connect() # Reabrir conexión por si acaso
+            return False, f"Error inesperado durante la restauración: {e}"
 
     # --- Funciones CRUD de Productos (Implementadas) ---
     
@@ -362,6 +410,9 @@ class DatabaseManager:
         """
         Ejecuta una transacción atómica para registrar la venta y descontar el stock.
         """
+        if not self.conn:
+            return False, "Conexión a la DB no activa para la venta."
+
         conn = self.conn
         cursor = conn.cursor()
         
