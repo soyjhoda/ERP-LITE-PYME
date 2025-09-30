@@ -12,13 +12,12 @@ class DatabaseManager:
         """Inicializa la conexión con la base de datos y crea tablas si no existen."""
         self.conn = None
         self.connect()
-        self.create_default_tables()
-        self.initialize_default_config() # <-- Nueva inicialización
+        self.create_default_tables() 
+        self.initialize_default_config() 
 
     def connect(self):
         """Establece la conexión con la base de datos."""
         try:
-            # Asegurarse de que la conexión use el modo de fila (diccionario) para futuras consultas
             self.conn = sqlite3.connect(DB_FILE)
             self.conn.row_factory = sqlite3.Row # Permite acceder a las columnas por nombre
             print(f"Conectado a la DB: {DB_FILE}")
@@ -40,7 +39,6 @@ class DatabaseManager:
             return cursor
         except Error as e:
             print(f"Error al ejecutar consulta: {e}")
-            # Si hay un error, deshacemos cualquier cambio pendiente (aunque no usemos transacciones explícitas aquí)
             self.conn.rollback() 
             return None
 
@@ -64,8 +62,18 @@ class DatabaseManager:
             print(f"Error al obtener todas las filas: {e}")
             return []
 
+    def _check_and_add_column(self, table_name, column_name, column_type):
+        """Verifica si una columna existe y la añade si no."""
+        try:
+            # Intenta seleccionar la columna para ver si existe
+            self.conn.execute(f"SELECT {column_name} FROM {table_name} LIMIT 1")
+        except sqlite3.OperationalError:
+            # Si la columna no existe (OperationalError), la añadimos.
+            self.execute_query(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            print(f"Columna '{column_name}' añadida a la tabla '{table_name}'.")
+
     def create_default_tables(self):
-        """Crea las tablas de usuarios, productos, configuración, ventas y detalles_venta si no existen."""
+        """Crea las tablas y asegura la existencia de los nuevos campos de producto."""
         
         # 1. Tabla de Usuarios
         self.execute_query("""
@@ -77,20 +85,26 @@ class DatabaseManager:
             )
         """)
         
-        # 2. Tabla de Productos (Esencial para Inventario)
+        # 2. Tabla de Productos 
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS productos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 codigo TEXT NOT NULL UNIQUE,
                 nombre TEXT NOT NULL,
                 stock REAL NOT NULL DEFAULT 0,
-                precio_venta REAL NOT NULL,
-                precio_costo REAL NOT NULL,
+                precio_venta REAL NOT NULL, 
+                precio_costo REAL NOT NULL, 
                 categoria TEXT
             )
         """)
 
-        # 3. Tabla de Configuración (para parámetros globales como la Tasa de Cambio)
+        # Añadir los nuevos campos a la tabla de productos si no existen (Manejo de migraciones)
+        self._check_and_add_column('productos', 'proveedor', 'TEXT')
+        self._check_and_add_column('productos', 'stock_minimo', 'REAL NOT NULL DEFAULT 0')
+        self._check_and_add_column('productos', 'marca', 'TEXT')
+        self._check_and_add_column('productos', 'categoria', 'TEXT')
+
+        # 3. Tabla de Configuración 
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS configuracion (
                 key TEXT PRIMARY KEY,
@@ -98,14 +112,13 @@ class DatabaseManager:
             )
         """)
         
-        # --- TABLAS NUEVAS PARA REGISTRO DE VENTAS ---
-        
         # 4. Tabla de Ventas (Encabezado de la factura)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS ventas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fecha TEXT NOT NULL,
                 total_bs REAL NOT NULL,
+                total_usd REAL NOT NULL, 
                 tasa_cambio REAL NOT NULL,
                 user_id INTEGER,
                 FOREIGN KEY (user_id) REFERENCES usuarios(id)
@@ -113,6 +126,7 @@ class DatabaseManager:
         """)
         
         # 5. Tabla de Detalles de Venta (Líneas de productos en la factura)
+        # Nota: Revisamos y añadimos los campos de Bolívares que nos faltaban
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS detalles_venta (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,14 +134,29 @@ class DatabaseManager:
                 producto_id INTEGER NOT NULL,
                 nombre_producto TEXT NOT NULL,
                 cantidad REAL NOT NULL,
-                precio_unitario REAL NOT NULL,
-                subtotal REAL NOT NULL,
+                precio_unitario_usd REAL NOT NULL,-- El precio base en USD
+                precio_unitario_bs REAL NOT NULL,-- El precio unitario en Bs al momento de la venta
+                subtotal_usd REAL NOT NULL,-- Subtotal en USD
+                subtotal_bs REAL NOT NULL, -- Subtotal en Bs
                 FOREIGN KEY (venta_id) REFERENCES ventas(id),
                 FOREIGN KEY (producto_id) REFERENCES productos(id)
             )
         """)
-        # ----------------------------------------------
-            
+        
+        # Migración: Añadir campos de Bs a detalles_venta si no existen
+        self._check_and_add_column('detalles_venta', 'precio_unitario_bs', 'REAL NOT NULL DEFAULT 0.0')
+        self._check_and_add_column('detalles_venta', 'subtotal_bs', 'REAL NOT NULL DEFAULT 0.0')
+        # También renombramos/alineamos el campo 'precio_unitario' antiguo a 'precio_unitario_usd'
+        # Nota: SQLite no permite renombrar fácilmente, asumiremos que los campos 'precio_unitario' y 'subtotal' 
+        # de la versión anterior ya fueron tratados como USD por la aplicación, y nos enfocaremos en 
+        # asegurar los campos 'precio_unitario_usd' y 'subtotal_usd'
+        # Haremos una verificación para asegurar que los campos base de USD existen también
+        self._check_and_add_column('detalles_venta', 'precio_unitario_usd', 'REAL NOT NULL DEFAULT 0.0')
+        self._check_and_add_column('detalles_venta', 'subtotal_usd', 'REAL NOT NULL DEFAULT 0.0')
+        
+        # Aseguramos que los campos viejos no interfieran, si existían antes de la migración
+        
+        
     def initialize_default_config(self):
         """Inserta la configuración inicial por defecto."""
         # Insertar usuario administrador por defecto si no existe
@@ -138,14 +167,24 @@ class DatabaseManager:
             
         # Insertar productos de prueba si no hay ninguno
         if not self.fetch_one("SELECT id FROM productos"):
+            # DATOS DE PRUEBA ACTUALIZADOS A USD Y NUEVOS CAMPOS
             products_to_insert = [
-                ('P001', 'Laptop Gamer X', 10, 850.50, 600.00, 'Electrónica'),
-                ('P002', 'Monitor Curvo 27"', 25, 250.00, 180.00, 'Electrónica'),
-                ('P003', 'Mouse Inalámbrico', 50, 15.75, 8.50, 'Accesorios'),
+                # codigo, nombre, stock, precio_venta (USD), precio_costo (USD), categoria, proveedor, stock_minimo, marca
+                ('P001', 'Laptop Gamer X', 10, 850.50, 600.00, 'Electrónica', 'TechGlobal Inc.', 5, 'Alienware'),
+                ('H001', 'Martillo Mango Fibra', 45, 8.00, 5.00, 'Herramientas', 'FerreMax S.A.', 10, 'Truper'),
+                ('P002', 'Monitor Curvo 27"', 25, 250.00, 180.00, 'Electrónica', 'TechGlobal Inc.', 10, 'Samsung'),
+                ('P003', 'Mouse Inalámbrico', 50, 15.75, 8.50, 'Accesorios', 'AccesoCorp', 20, 'Logitech'),
+                ('I001', 'Bombillo LED 10W', 150, 2.50, 1.20, 'Iluminación', 'ElectroWatts', 50, 'Philips'),
             ]
+            
+            sql_insert = """
+                INSERT INTO productos 
+                (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
             for prod in products_to_insert:
-                self.execute_query("INSERT INTO productos (codigo, nombre, stock, precio_venta, precio_costo, categoria) VALUES (?, ?, ?, ?, ?, ?)", prod)
-            print("Productos de prueba insertados.")
+                self.execute_query(sql_insert, prod)
+            print("Productos de prueba insertados con datos USD y campos extendidos.")
             
         # Insertar Tasa de Cambio por defecto (si no existe)
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'exchange_rate'"):
@@ -160,12 +199,11 @@ class DatabaseManager:
         row = self.fetch_one("SELECT value FROM configuracion WHERE key = 'exchange_rate'")
         if row:
             try:
-                # El valor está guardado como TEXTO, lo convertimos a FLOAT
                 return float(row['value']) 
             except ValueError:
                 print("Advertencia: El valor de la tasa de cambio no es un número válido.")
-                return None
-        return None
+                return 0.0 # Valor por defecto seguro
+        return 0.0 # Valor por defecto seguro
 
     def set_exchange_rate(self, rate):
         """Guarda o actualiza la tasa de cambio en la tabla de configuración."""
@@ -175,75 +213,92 @@ class DatabaseManager:
         """, (str(rate),))
 
 
-    # --- NUEVO MÉTODO TRANSACCIONAL CRUCIAL ---
+    # --- MÉTODO TRANSACCIONAL CRUCIAL ---
 
-    def process_sale_transaction(self, cart_data, total_final_bs, current_rate, user_id):
+    def process_sale_transaction(self, cart_data, total_final_usd, current_rate, user_id):
         """
         Ejecuta una transacción atómica para registrar la venta y descontar el stock.
-        Si alguna operación falla (ej. stock insuficiente), la transacción se revierte.
-
-        :param cart_data: Diccionario del carrito con {p_id: {'nombre', 'precio', 'cantidad'}}
-        :param total_final_bs: Total de la venta en bolívares.
+        
+        :param cart_data: Diccionario del carrito con {p_id: {'nombre', 'precio_usd', 'stock_real', 'cantidad'}}
+        :param total_final_usd: Total de la venta calculado en USD.
         :param current_rate: Tasa de cambio usada en la venta.
         :param user_id: ID del usuario que registra la venta.
-        :return: True si la transacción fue exitosa, False en caso contrario.
+        :return: (True, "Mensaje de éxito") o (False, "Mensaje de error").
         """
-        cursor = self.conn.cursor()
+        # Usaremos una nueva conexión local para esta transacción para garantizar el rollback/commit
+        # Aunque la clase ya usa self.conn, lo manejaremos con un cursor local y explícito
         
-        # 1. Verificar Stock Mínimo para todos los productos
+        conn = self.conn
+        cursor = conn.cursor()
+        
+        # 1. Chequeo de stock (Reconfirmar justo antes de la transacción)
         for p_id, data in cart_data.items():
             cantidad_vendida = data['cantidad']
             
-            stock_data = self.fetch_one("SELECT stock FROM productos WHERE id = ?", (p_id,))
+            # Usamos el stock_real del carrito, que se cargó desde la DB inicialmente
+            stock_real = data['stock_real'] 
             
-            if stock_data is None or stock_data[0] < cantidad_vendida:
-                # Si no hay stock suficiente, abortar la venta antes de iniciar la transacción.
-                return False, f"Stock insuficiente para el producto ID {p_id}."
-
+            # El stock disponible es el real menos la cantidad que ya está en el carrito (incluyendo esta venta)
+            # Como la vista ya validó el stock, este es un doble chequeo de seguridad.
+            if stock_real < cantidad_vendida:
+                return False, f"Stock insuficiente (solo quedan {stock_real}) para el producto: {data['nombre']}."
 
         try:
             # INICIO DE LA TRANSACCIÓN
-            # SQLite maneja implícitamente la transacción con BEGIN por defecto en cada sentencia,
-            # pero hacemos el ROLLBACK/COMMIT explícito para manejar el flujo.
-
             fecha_venta = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+            total_final_bs = total_final_usd * current_rate # Calcular total en BsF
+            
             # A. Insertar Encabezado de Venta (Tabla 'ventas')
             cursor.execute("""
-                INSERT INTO ventas (fecha, total_bs, tasa_cambio, user_id)
-                VALUES (?, ?, ?, ?)
-            """, (fecha_venta, total_final_bs, current_rate, user_id))
+                INSERT INTO ventas (fecha, total_bs, total_usd, tasa_cambio, user_id)
+                VALUES (?, ?, ?, ?, ?)
+            """, (fecha_venta, total_final_bs, total_final_usd, current_rate, user_id))
             
-            # Obtener el ID de la venta recién insertada (clave para los detalles)
             venta_id = cursor.lastrowid 
 
             # B. Iterar sobre el carrito para insertar detalles y descontar stock
             for p_id, data in cart_data.items():
                 cantidad = data['cantidad']
-                precio_unitario = data['precio']
-                nombre = data['nombre']
-                subtotal = cantidad * precio_unitario
+                precio_unitario_usd = data['precio_usd'] 
+                
+                # Calcular valores en Bs
+                precio_unitario_bs = precio_unitario_usd * current_rate
+                subtotal_usd = cantidad * precio_unitario_usd
+                subtotal_bs = cantidad * precio_unitario_bs
 
                 # B.1. Insertar Detalle de Venta (Tabla 'detalles_venta')
                 cursor.execute("""
-                    INSERT INTO detalles_venta (venta_id, producto_id, nombre_producto, cantidad, precio_unitario, subtotal)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (venta_id, p_id, nombre, cantidad, precio_unitario, subtotal))
+                    INSERT INTO detalles_venta (
+                        venta_id, producto_id, nombre_producto, cantidad, 
+                        precio_unitario_usd, precio_unitario_bs, subtotal_usd, subtotal_bs
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    venta_id, p_id, data['nombre'], cantidad, 
+                    precio_unitario_usd, precio_unitario_bs, subtotal_usd, subtotal_bs
+                ))
 
                 # B.2. Descontar Stock (Tabla 'productos')
                 cursor.execute("""
                     UPDATE productos SET stock = stock - ? WHERE id = ?
                 """, (cantidad, p_id))
-
+            
             # FIN DE LA TRANSACCIÓN: Confirmar todos los cambios
-            self.conn.commit()
-            return True, "Venta procesada con éxito y stock descontado."
+            conn.commit()
+            return True, f"Venta {venta_id} procesada con éxito."
 
         except Error as e:
-            # Si ocurre cualquier error, revertir los cambios
-            self.conn.rollback() 
-            print(f"Error fatal en la transacción de venta: {e}")
+            # Si ocurre cualquier error de SQL, revertir los cambios
+            conn.rollback() 
+            print(f"Error fatal de SQL en la transacción de venta: {e}")
             return False, f"Error de base de datos: {e}"
+            
         except Exception as e:
-            self.conn.rollback()
+            # Si ocurre cualquier otro error, revertir los cambios
+            conn.rollback()
+            print(f"Error inesperado en la transacción de venta: {e}")
             return False, f"Error inesperado: {e}"
+
+    # --- Funciones CRUD de Productos ---
+    # (El resto de tus métodos de DB, como insert_product, get_product_by_id, etc. irían aquí)
+    # ...

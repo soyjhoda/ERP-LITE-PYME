@@ -1,12 +1,14 @@
 import customtkinter as ctk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, simpledialog
+import re # Necesario para validación de entrada
 
 # Definición de colores
-ACCENT_CYAN = "#00FFFF"        
-ACCENT_GREEN = "#00c853"       
-BACKGROUND_DARK = "#0D1B2A"   
-FRAME_MID = "#1B263B"         
-FRAME_DARK = "#1B263B"        
+ACCENT_CYAN = "#00FFFF"
+ACCENT_GREEN = "#00c853"
+BACKGROUND_DARK = "#0D1B2A"
+FRAME_MID = "#1B263B"
+FRAME_DARK = "#1B263B"
+ACCENT_RED = "#e74c3c"
 
 class InventoryPage(ctk.CTkFrame):
     """Clase para la página de Inventario, maneja la visualización y búsqueda de productos."""
@@ -33,7 +35,6 @@ class InventoryPage(ctk.CTkFrame):
                         foreground="white", 
                         font=('Arial', 11, 'bold'))
         
-        # Se elimina el borde y se ajusta el padding para la tabla
         style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})]) 
         # FIN DE LA SOLUCIÓN DEFINITIVA DE ESTILO
 
@@ -66,17 +67,20 @@ class InventoryPage(ctk.CTkFrame):
 
         # 4. Configuración del Treeview (Tabla)
         self.inventory_tree = ttk.Treeview(self.table_frame, 
-                                           columns=("id", "code", "name", "stock", "price", "cost", "category"), 
-                                           show='headings') 
+                                            columns=("id", "code", "name", "stock", "stock_min", "price", "cost", "category", "brand", "supplier"), 
+                                            show='headings') 
         
-        # Columnas
-        self.inventory_tree.heading("id", text="ID"); self.inventory_tree.column("id", width=50, stretch=ctk.NO)
-        self.inventory_tree.heading("code", text="Código"); self.inventory_tree.column("code", width=120, stretch=ctk.NO)
-        self.inventory_tree.heading("name", text="Nombre del Producto"); self.inventory_tree.column("name", minwidth=250, stretch=ctk.YES)
-        self.inventory_tree.heading("stock", text="Stock"); self.inventory_tree.column("stock", width=80, anchor=ctk.CENTER)
-        self.inventory_tree.heading("price", text="Precio Venta"); self.inventory_tree.column("price", width=120, anchor=ctk.E)
-        self.inventory_tree.heading("cost", text="Costo"); self.inventory_tree.column("cost", width=120, anchor=ctk.E)
-        self.inventory_tree.heading("category", text="Categoría"); self.inventory_tree.column("category", width=150)
+        # Columnas actualizadas para incluir nuevos campos
+        self.inventory_tree.heading("id", text="ID"); self.inventory_tree.column("id", width=40, stretch=ctk.NO)
+        self.inventory_tree.heading("code", text="Código"); self.inventory_tree.column("code", width=100, stretch=ctk.NO)
+        self.inventory_tree.heading("name", text="Nombre del Producto"); self.inventory_tree.column("name", minwidth=200, stretch=ctk.YES)
+        self.inventory_tree.heading("stock", text="Stock"); self.inventory_tree.column("stock", width=70, anchor=ctk.CENTER)
+        self.inventory_tree.heading("stock_min", text="Stock Min."); self.inventory_tree.column("stock_min", width=70, anchor=ctk.CENTER)
+        self.inventory_tree.heading("price", text="Venta (USD)"); self.inventory_tree.column("price", width=100, anchor=ctk.E)
+        self.inventory_tree.heading("cost", text="Costo (USD)"); self.inventory_tree.column("cost", width=100, anchor=ctk.E)
+        self.inventory_tree.heading("category", text="Categoría"); self.inventory_tree.column("category", width=120)
+        self.inventory_tree.heading("brand", text="Marca"); self.inventory_tree.column("brand", width=100)
+        self.inventory_tree.heading("supplier", text="Proveedor"); self.inventory_tree.column("supplier", width=150)
         
         self.inventory_tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
@@ -87,28 +91,55 @@ class InventoryPage(ctk.CTkFrame):
         
         self.load_products()
 
-    def load_products(self, rate=None): # <--- ACEPTA EL ARGUMENTO OPCIONAL 'rate'
+    # --- Métodos de Interfaz y Lógica de Datos ---
+
+    def load_products(self, rate=None): 
         """Carga todos los productos desde la base de datos y los inserta en el Treeview."""
         
         # Limpiar la tabla existente
         for item in self.inventory_tree.get_children():
             self.inventory_tree.delete(item)
 
-        # Obtener todos los productos
-        products = self.db.fetch_all("SELECT id, codigo, nombre, stock, precio_venta, precio_costo, categoria FROM productos")
+        # Obtener todos los productos, incluyendo los nuevos campos
+        sql_query = """
+            SELECT 
+                id, codigo, nombre, stock, stock_minimo, 
+                precio_venta, precio_costo, categoria, marca, proveedor 
+            FROM productos
+        """
+        products = self.db.fetch_all(sql_query)
         
         # Insertar los datos en el Treeview
         for product in products:
-            # Formato de moneda para Precio Venta y Costo (solo para visualización)
-            formatted_product = list(product)
-            try:
-                formatted_product[4] = f"Bs/{formatted_product[4]:,.2f}" # Precio Venta
-                formatted_product[5] = f"Bs/{formatted_product[5]:,.2f}" # Precio Costo
-            except (ValueError, TypeError):
-                formatted_product[4] = "Bs/0.00" 
-                formatted_product[5] = "Bs/0.00" 
+            # product es un sqlite3.Row, accedemos por nombre
             
-            self.inventory_tree.insert("", "end", values=formatted_product)
+            # Chequeo de Stock Mínimo para aplicar tag de color
+            stock = product['stock']
+            stock_minimo = product['stock_minimo']
+            tags = ()
+            if stock <= stock_minimo:
+                tags = ('min_stock',)
+                
+            # Formato de moneda para Precio Venta y Costo (Mostrado en USD)
+            formatted_product = [
+                product['id'],
+                product['codigo'],
+                product['nombre'],
+                f"{stock:g}", # Usar :g para evitar decimales innecesarios (ej. 10.0)
+                f"{stock_minimo:g}",
+                f"$.{product['precio_venta']:,.2f}", # Precio Venta en USD
+                f"$.{product['precio_costo']:,.2f}", # Precio Costo en USD
+                product['categoria'] if product['categoria'] else 'N/A',
+                product['marca'] if product['marca'] else 'N/A',
+                product['proveedor'] if product['proveedor'] else 'N/A',
+            ]
+            
+            # Insertar con el tag si el stock es bajo
+            self.inventory_tree.insert("", "end", values=formatted_product, tags=tags)
+
+        # Configurar estilo para alerta de stock mínimo
+        self.inventory_tree.tag_configure('min_stock', background=ACCENT_RED, foreground='white')
+
 
     def search_products(self, event=None):
         """Busca productos en tiempo real basándose en el texto del campo de búsqueda."""
@@ -122,224 +153,162 @@ class InventoryPage(ctk.CTkFrame):
             return
         
         sql_query = """
-            SELECT id, codigo, nombre, stock, precio_venta, precio_costo, categoria 
+            SELECT id, codigo, nombre, stock, stock_minimo, precio_venta, precio_costo, categoria, marca, proveedor 
             FROM productos 
-            WHERE codigo LIKE ? OR nombre LIKE ?
+            WHERE codigo LIKE ? OR nombre LIKE ? OR marca LIKE ?
         """
         search_term = f"%{query}%"
-        products = self.db.fetch_all(sql_query, (search_term, search_term))
+        products = self.db.fetch_all(sql_query, (search_term, search_term, search_term))
 
         for product in products:
-            formatted_product = list(product)
-            try:
-                formatted_product[4] = f"Bs/{formatted_product[4]:,.2f}"
-                formatted_product[5] = f"Bs/{formatted_product[5]:,.2f}"
-            except (ValueError, TypeError):
-                 formatted_product[4] = "Bs/0.00" 
-                 formatted_product[5] = "Bs/0.00" 
-            self.inventory_tree.insert("", "end", values=formatted_product)
+            stock = product['stock']
+            stock_minimo = product['stock_minimo']
+            tags = ()
+            if stock <= stock_minimo:
+                tags = ('min_stock',)
+
+            formatted_product = [
+                product['id'],
+                product['codigo'],
+                product['nombre'],
+                f"{stock:g}",
+                f"{stock_minimo:g}",
+                f"$.{product['precio_venta']:,.2f}", # USD
+                f"$.{product['precio_costo']:,.2f}", # USD
+                product['categoria'] if product['categoria'] else 'N/A',
+                product['marca'] if product['marca'] else 'N/A',
+                product['proveedor'] if product['proveedor'] else 'N/A',
+            ]
+            self.inventory_tree.insert("", "end", values=formatted_product, tags=tags)
             
+    # --- VENTANA PARA AÑADIR NUEVO PRODUCTO ---
+    
     def open_add_product_window(self):
-        messagebox.showinfo("Pendiente", "Funcionalidad para añadir producto no implementada aún.")
-import customtkinter as ctk
-from tkinter import messagebox, ttk
-from PIL import Image
-
-# --- Importaciones de las Vistas ---
-from .pos_page import PosPage 
-from .inventory_page import InventoryPage
-from .config_page import ConfigPage
-# -----------------------------------
-
-# Definición de colores 
-ACCENT_CYAN = "#00FFFF"       
-ACCENT_GREEN = "#00c853"       
-BACKGROUND_DARK = "#0D1B2A"   
-FRAME_MID = "#1B263B"         
-LOGO_PATH = "assets/images/logo.png"
-
-
-class DashboardFrame(ctk.CTkFrame):
-    """Contenedor principal que aloja la navegación, el menú y el contenido de la aplicación."""
-    def __init__(self, master, db_manager, user_id):
-        super().__init__(master, fg_color=BACKGROUND_DARK)
-        self.db = db_manager
-        self.current_user_id = user_id
+        """Abre la ventana modal para añadir un nuevo producto con todos los campos."""
         
-        self.pages = {}
-        self.current_page = None
-
-        self.grid_columnconfigure(0, weight=0) 
-        self.grid_columnconfigure(1, weight=1) 
-        self.grid_rowconfigure(0, weight=1)
-
-        # 1. BARRA DE NAVEGACIÓN (Columna 0)
-        self.navigation_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, width=200, corner_radius=0)
-        self.navigation_frame.grid(row=0, column=0, sticky="nsew")
-        self.navigation_frame.grid_rowconfigure(7, weight=1) 
+        # 1. Crear Toplevel (Ventana Modal)
+        self.add_product_window = ctk.CTkToplevel(self)
+        self.add_product_window.title("Añadir Nuevo Producto")
+        self.add_product_window.geometry("500x700")
+        self.add_product_window.transient(self.master.master) # Mantenerla encima de la ventana principal
+        self.add_product_window.grab_set() # Bloquear interacción con la ventana principal
         
-        # Logo
-        try:
-             logo_img = ctk.CTkImage(light_image=Image.open(LOGO_PATH),
-                                     dark_image=Image.open(LOGO_PATH),
-                                     size=(40, 40)) 
-             ctk.CTkLabel(self.navigation_frame, image=logo_img, text=" PROFITUS", 
-                          font=ctk.CTkFont(size=20, weight="bold"), 
-                          text_color=ACCENT_CYAN, compound="left").grid(row=0, column=0, padx=20, pady=(20, 10))
-        except FileNotFoundError:
-             ctk.CTkLabel(self.navigation_frame, text="PROFITUS", 
-                          font=ctk.CTkFont(size=20, weight="bold"), 
-                          text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10))
+        # Configuración de la rejilla
+        self.add_product_window.grid_columnconfigure(0, weight=1)
+        self.add_product_window.configure(fg_color=BACKGROUND_DARK)
 
-        # Título del Menú
-        ctk.CTkLabel(self.navigation_frame, text="MENÚ", font=ctk.CTkFont(size=14), text_color="gray60").grid(row=1, column=0, padx=20, pady=(20, 5), sticky="w")
-        
-        button_args = {
-            "corner_radius": 5, "height": 40, 
-            "fg_color": "transparent", "text_color": "white",
-            "hover_color": "#2c3e50", "anchor": "w",
-            "font": ctk.CTkFont(size=15)
+        ctk.CTkLabel(self.add_product_window, text="Registro de Producto", 
+                     font=ctk.CTkFont(size=20, weight="bold"), text_color=ACCENT_CYAN).grid(row=0, column=0, pady=20)
+
+        # 2. Frame de Entrada de Datos
+        input_frame = ctk.CTkFrame(self.add_product_window, fg_color=FRAME_MID, corner_radius=10)
+        input_frame.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
+        input_frame.grid_columnconfigure(1, weight=1)
+
+        # Lista de campos y variables de control
+        fields = {
+            "Código de Producto (único):": ctk.StringVar(),
+            "Nombre del Producto:": ctk.StringVar(),
+            "Stock Inicial (Unidades):": ctk.StringVar(value="0"),
+            "Stock Mínimo (Alerta):": ctk.StringVar(value="0"),
+            "Precio de Venta (USD):": ctk.StringVar(),
+            "Precio de Costo (USD):": ctk.StringVar(),
+            "Marca:": ctk.StringVar(),
         }
         
-        # Botones de navegación
-        self.home_button = ctk.CTkButton(self.navigation_frame, text="🏠 Home",
-                                         command=lambda: self.select_frame_by_name("home"), **button_args)
-        self.home_button.grid(row=2, column=0, sticky="ew", padx=10, pady=2)
+        # Campo de proveedor (se usará un ComboBox simulado con valores hardcodeados por ahora)
+        self.supplier_var = ctk.StringVar(value="Proveedor Principal")
+        # Campo de Categoría (ComboBox simulado)
+        self.category_var = ctk.StringVar(value="Electrónica")
         
-        self.inventory_button = ctk.CTkButton(self.navigation_frame, text="📦 Inventario",
-                                              command=lambda: self.select_frame_by_name("inventory"), **button_args)
-        self.inventory_button.grid(row=3, column=0, sticky="ew", padx=10, pady=2)
-        
-        self.pos_button = ctk.CTkButton(self.navigation_frame, text="🛒 PDV (POS)",
-                                         command=lambda: self.select_frame_by_name("pos"), **button_args)
-        self.pos_button.grid(row=4, column=0, sticky="ew", padx=10, pady=2)
-        
-        self.config_button = ctk.CTkButton(self.navigation_frame, text="⚙️ Configuración",
-                                            command=lambda: self.select_frame_by_name("config"), **button_args)
-        self.config_button.grid(row=5, column=0, sticky="ew", padx=10, pady=2)
-        
-        # --- NUEVA SECCIÓN: INDICADOR DE TASA DE CAMBIO (Bs/USD) ---
-        self.rate_frame = ctk.CTkFrame(self.navigation_frame, fg_color="transparent")
-        self.rate_frame.grid(row=6, column=0, sticky="ew", padx=10, pady=(15, 5))
-        self.rate_frame.grid_columnconfigure(0, weight=1)
-        
-        ctk.CTkLabel(self.rate_frame, text="TASA (Bs/USD)", 
-                     font=ctk.CTkFont(size=12, weight="bold"), 
-                     text_color="gray70").grid(row=0, column=0, sticky="w")
-        
-        self.exchange_rate_label = ctk.CTkLabel(self.rate_frame, 
-                                                text="Cargando...", 
-                                                font=ctk.CTkFont(size=16, weight="bold"), 
-                                                text_color=ACCENT_GREEN)
-        self.exchange_rate_label.grid(row=1, column=0, sticky="w")
-        # -----------------------------------------------------------
-        
-        # Botón de Cerrar Sesión
-        ctk.CTkButton(self.navigation_frame, text="❌ Cerrar Sesión", 
-                      command=master.destroy, 
-                      fg_color="#c0392b", hover_color="#a13024",
-                      font=ctk.CTkFont(size=16, weight="bold")).grid(row=8, column=0, sticky="ew", padx=10, pady=(10, 20))
-        
-        # 2. ÁREA DE CONTENIDO (Columna 1)
-        self.content_container = ctk.CTkFrame(self, fg_color=BACKGROUND_DARK, corner_radius=0)
-        self.content_container.grid(row=0, column=1, sticky="nsew")
-        self.content_container.grid_columnconfigure(0, weight=1)
-        self.content_container.grid_rowconfigure(0, weight=1)
+        # Valores de ejemplo para ComboBox (Esto se manejaría con una tabla de proveedores y categorías en una mejora futura)
+        supplier_options = ["Proveedor Principal", "TechGlobal Inc.", "FerreMax S.A.", "AccesoCorp", "Otro..."]
+        category_options = ["Electrónica", "Herramientas", "Accesorios", "Iluminación", "Hogar", "Otro..."]
 
-        # Cargar y mostrar la tasa de cambio inicial
-        self.update_exchange_rate_label()
+        row_idx = 0
+        self.entry_widgets = {} # Diccionario para guardar referencias a las entradas de texto
 
-        # 3. INICIALIZACIÓN DE PÁGINAS
-        self._create_pages()
+        for label_text, var in fields.items():
+            ctk.CTkLabel(input_frame, text=label_text, anchor="w", text_color="white").grid(row=row_idx, column=0, padx=10, pady=5, sticky="w")
+            
+            entry = ctk.CTkEntry(input_frame, textvariable=var, height=30, fg_color="#2c3e50")
+            entry.grid(row=row_idx, column=1, padx=10, pady=5, sticky="ew")
+            self.entry_widgets[label_text] = entry # Guardamos la referencia
+            row_idx += 1
+            
+        # Campo Proveedor (ComboBox)
+        ctk.CTkLabel(input_frame, text="Proveedor:", anchor="w", text_color="white").grid(row=row_idx, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkComboBox(input_frame, variable=self.supplier_var, values=supplier_options, fg_color="#2c3e50", button_color=ACCENT_CYAN, button_hover_color="#00aaff").grid(row=row_idx, column=1, padx=10, pady=5, sticky="ew")
+        row_idx += 1
         
-        self.select_frame_by_name("home")
+        # Campo Categoría (ComboBox)
+        ctk.CTkLabel(input_frame, text="Categoría:", anchor="w", text_color="white").grid(row=row_idx, column=0, padx=10, pady=5, sticky="w")
+        ctk.CTkComboBox(input_frame, variable=self.category_var, values=category_options, fg_color="#2c3e50", button_color=ACCENT_CYAN, button_hover_color="#00aaff").grid(row=row_idx, column=1, padx=10, pady=5, sticky="ew")
+        row_idx += 1
+        
+        # 3. Botones de Acción
+        ctk.CTkButton(self.add_product_window, text="✅ Guardar Producto", command=lambda: self.save_new_product(fields),
+                      fg_color=ACCENT_GREEN, hover_color="#008a38", height=40).grid(row=2, column=0, padx=20, pady=(20, 10), sticky="ew")
 
-    def update_exchange_rate_label(self):
-        """Carga la tasa de cambio actual desde la base de datos y actualiza el label."""
+        ctk.CTkButton(self.add_product_window, text="❌ Cancelar", command=self.add_product_window.destroy,
+                      fg_color="#34495e", hover_color="#2c3e50", height=40).grid(row=3, column=0, padx=20, pady=(0, 20), sticky="ew")
+
+    def save_new_product(self, fields):
+        """Valida y guarda los datos del nuevo producto en la base de datos."""
+        
+        # 1. Extracción y Conversión de Datos
         try:
-            # Llama al nuevo método de la base de datos
-            rate = self.db.get_exchange_rate() 
-            # Formatea
-            formatted_rate = f"Bs. {rate:,.2f}" 
-            self.exchange_rate_label.configure(text=formatted_rate)
-            return rate 
+            codigo = fields["Código de Producto (único):"].get().strip().upper()
+            nombre = fields["Nombre del Producto:"].get().strip()
+            stock = float(fields["Stock Inicial (Unidades):"].get())
+            stock_minimo = float(fields["Stock Mínimo (Alerta):"].get())
+            precio_venta = float(fields["Precio de Venta (USD):"].get())
+            precio_costo = float(fields["Precio de Costo (USD):"].get())
+            marca = fields["Marca:"].get().strip()
+            
+            # ComboBox/Variables
+            proveedor = self.supplier_var.get()
+            categoria = self.category_var.get()
+            
+        except ValueError:
+            messagebox.showerror("Error de Datos", "Stock, Stock Mínimo, Precio de Venta y Precio de Costo deben ser números válidos.")
+            return
         except Exception as e:
-            print(f"Error al cargar la tasa de cambio: {e}")
-            self.exchange_rate_label.configure(text="Error de carga")
-            return None
+            messagebox.showerror("Error", f"Faltan campos por llenar o error de formato: {e}")
+            return
 
+        # 2. Validación de Campos Obligatorios y Lógica
+        if not all([codigo, nombre]):
+            messagebox.showerror("Error de Validación", "El Código y el Nombre del Producto son obligatorios.")
+            return
 
-    def _create_pages(self):
-        """Instancia todas las páginas y las guarda en el diccionario self.pages."""
+        if precio_venta <= 0 or precio_costo <= 0:
+            messagebox.showerror("Error de Validación", "Los precios de Venta y Costo deben ser mayores a cero.")
+            return
+            
+        if stock < 0 or stock_minimo < 0:
+            messagebox.showerror("Error de Validación", "El stock y el stock mínimo no pueden ser números negativos.")
+            return
 
-        # 1. Página de Inicio (Home)
-        home_frame = ctk.CTkFrame(self.content_container, fg_color=BACKGROUND_DARK)
-        home_frame.grid_columnconfigure(0, weight=1)
-        home_frame.grid_rowconfigure(0, weight=1)
-        
-        welcome_frame = ctk.CTkFrame(home_frame, fg_color="transparent")
-        welcome_frame.grid(row=0, column=0, sticky="nsew")
-        welcome_frame.grid_columnconfigure(0, weight=1)
-        welcome_frame.grid_rowconfigure(0, weight=1)
+        # 3. Inserción en la Base de Datos
+        try:
+            sql = """
+                INSERT INTO productos 
+                (codigo, nombre, stock, stock_minimo, precio_venta, precio_costo, marca, proveedor, categoria)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (codigo, nombre, stock, stock_minimo, precio_venta, precio_costo, marca, proveedor, categoria)
+            result = self.db.execute_query(sql, params)
 
-        ctk.CTkLabel(welcome_frame, text=f"Bienvenido al Dashboard", 
-                     font=ctk.CTkFont(size=30, weight="bold"), text_color=ACCENT_CYAN).grid(row=0, column=0, pady=(100, 5))
-        ctk.CTkLabel(welcome_frame, text="Usa el menú lateral para navegar.", 
-                     font=ctk.CTkFont(size=16), text_color="gray70").grid(row=1, column=0, pady=(0, 100))
-        
-        self.pages["home"] = home_frame
-
-        # 2. Páginas funcionales
-        # La InventoryPage ya no necesita argumentos extra en su constructor original
-        self.pages["inventory"] = InventoryPage(self.content_container, self.db, self.current_user_id)
-        # La PosPage ya no necesita argumentos extra en su constructor original
-        self.pages["pos"] = PosPage(self.content_container, self.db, self.current_user_id)
-        # IMPORTANTE: Pasamos el método de actualización al constructor de ConfigPage
-        self.pages["config"] = ConfigPage(self.content_container, self.db, self.current_user_id, self.update_exchange_rate_label)
-
-
-    def select_frame_by_name(self, name):
-        """Muestra la página seleccionada y oculta las demás."""
-        
-        # Desactivar color de todos los botones
-        self.home_button.configure(fg_color="transparent")
-        self.inventory_button.configure(fg_color="transparent")
-        self.pos_button.configure(fg_color="transparent")
-        self.config_button.configure(fg_color="transparent")
-
-        for page_name, page_frame in self.pages.items():
-            if page_name == name:
-                # Si es Inventario, llamar a load_products para recargar datos
-                if page_name == "inventory":
-                    try:
-                        # Obtenemos la tasa actual (aunque no la use, es bueno mantener el llamado)
-                        current_rate = self.update_exchange_rate_label() 
-                        
-                        # Llama a load_products (ahora preparado para aceptar 'current_rate')
-                        page_frame.load_products(current_rate)
-                    except AttributeError:
-                        pass
-                
-                # Si es POS, actualizar la tasa localmente
-                elif page_name == "pos":
-                    # Cargamos la tasa actual del Dashboard
-                    current_rate = self.update_exchange_rate_label()
-                    # Si el PosPage tiene un método para actualizar la tasa, lo llamamos
-                    if hasattr(page_frame, 'update_rate'):
-                        page_frame.update_rate(current_rate)
-
-                
-                page_frame.grid(row=0, column=0, sticky="nsew")
-                self.current_page = page_frame
-                
-                # Activar color del botón
-                if name == "home":
-                    self.home_button.configure(fg_color="#2c3e50")
-                elif name == "inventory":
-                    self.inventory_button.configure(fg_color="#2c3e50")
-                elif name == "pos":
-                    self.pos_button.configure(fg_color="#2c3e50")
-                elif name == "config":
-                    self.config_button.configure(fg_color="#2c3e50")
+            if result:
+                messagebox.showinfo("Éxito", f"Producto '{nombre}' ({codigo}) guardado correctamente.")
+                self.add_product_window.destroy() # Cerrar la ventana modal
+                self.load_products() # Recargar la lista de productos
             else:
-                page_frame.grid_forget()
+                 # Esta parte captura el error si el código ya existe (UNIQUE constraint)
+                messagebox.showerror("Error DB", "No se pudo guardar el producto. El código de producto podría ya existir.")
+
+        except Error as e:
+            messagebox.showerror("Error de Base de Datos", f"Hubo un error al insertar el producto: {e}")
+        except Exception as e:
+            messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado: {e}")
