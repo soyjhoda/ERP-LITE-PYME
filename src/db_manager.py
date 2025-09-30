@@ -1,9 +1,22 @@
 import sqlite3
 from sqlite3 import Error
-import os
 from datetime import datetime
+import hashlib # Importamos hashlib para hashear contraseñas
 
+# Nombre del archivo de la base de datos
 DB_FILE = 'profitus.db'
+
+# --- Funciones de Seguridad ---
+
+def hash_password(password):
+    """Genera un hash SHA-256 para la contraseña."""
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+def verify_password(stored_hash, provided_password):
+    """Verifica si la contraseña proporcionada coincide con el hash almacenado."""
+    return stored_hash == hash_password(provided_password)
+
+# ----------------------------
 
 class DatabaseManager:
     """Clase para manejar la conexión y las operaciones de la base de datos SQLite."""
@@ -63,7 +76,7 @@ class DatabaseManager:
             return []
 
     def _check_and_add_column(self, table_name, column_name, column_type):
-        """Verifica si una columna existe y la añade si no."""
+        """Verifica si una columna existe y la añade si no. (Para migraciones)"""
         try:
             # Intenta seleccionar la columna para ver si existe
             self.conn.execute(f"SELECT {column_name} FROM {table_name} LIMIT 1")
@@ -81,11 +94,12 @@ class DatabaseManager:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
-                rol TEXT NOT NULL DEFAULT 'empleado'
+                nombre_completo TEXT,
+                rol TEXT NOT NULL DEFAULT 'Cajero'
             )
         """)
         
-        # 2. Tabla de Productos 
+        # 2. Tabla de Productos (precio_venta y precio_costo siempre en USD)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS productos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +118,7 @@ class DatabaseManager:
         self._check_and_add_column('productos', 'marca', 'TEXT')
         self._check_and_add_column('productos', 'categoria', 'TEXT')
 
-        # 3. Tabla de Configuración 
+        # 3. Tabla de Configuración (Nombre, Logo, Tasa de Cambio)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS configuracion (
                 key TEXT PRIMARY KEY,
@@ -126,7 +140,6 @@ class DatabaseManager:
         """)
         
         # 5. Tabla de Detalles de Venta (Líneas de productos en la factura)
-        # Nota: Revisamos y añadimos los campos de Bolívares que nos faltaban
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS detalles_venta (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,36 +147,37 @@ class DatabaseManager:
                 producto_id INTEGER NOT NULL,
                 nombre_producto TEXT NOT NULL,
                 cantidad REAL NOT NULL,
-                precio_unitario_usd REAL NOT NULL,-- El precio base en USD
-                precio_unitario_bs REAL NOT NULL,-- El precio unitario en Bs al momento de la venta
-                subtotal_usd REAL NOT NULL,-- Subtotal en USD
-                subtotal_bs REAL NOT NULL, -- Subtotal en Bs
+                precio_unitario_usd REAL NOT NULL,
+                precio_unitario_bs REAL NOT NULL,
+                subtotal_usd REAL NOT NULL,
+                subtotal_bs REAL NOT NULL,
                 FOREIGN KEY (venta_id) REFERENCES ventas(id),
                 FOREIGN KEY (producto_id) REFERENCES productos(id)
             )
         """)
         
-        # Migración: Añadir campos de Bs a detalles_venta si no existen
+        # Migración: Aseguramos que los campos de moneda existen en detalles_venta
         self._check_and_add_column('detalles_venta', 'precio_unitario_bs', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'subtotal_bs', 'REAL NOT NULL DEFAULT 0.0')
-        # También renombramos/alineamos el campo 'precio_unitario' antiguo a 'precio_unitario_usd'
-        # Nota: SQLite no permite renombrar fácilmente, asumiremos que los campos 'precio_unitario' y 'subtotal' 
-        # de la versión anterior ya fueron tratados como USD por la aplicación, y nos enfocaremos en 
-        # asegurar los campos 'precio_unitario_usd' y 'subtotal_usd'
-        # Haremos una verificación para asegurar que los campos base de USD existen también
         self._check_and_add_column('detalles_venta', 'precio_unitario_usd', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'subtotal_usd', 'REAL NOT NULL DEFAULT 0.0')
         
-        # Aseguramos que los campos viejos no interfieran, si existían antes de la migración
-        
-        
+        # Aseguramos que la tabla de Ventas tiene el user_id
+        self._check_and_add_column('ventas', 'user_id', 'INTEGER')
+        # Aseguramos que la tabla de Usuarios tiene el nombre_completo
+        self._check_and_add_column('usuarios', 'nombre_completo', 'TEXT')
+            
     def initialize_default_config(self):
-        """Inserta la configuración inicial por defecto."""
+        """Inserta la configuración inicial por defecto (Admin, productos de prueba, tasa de cambio)."""
+        
+        # Hash de la contraseña "1234"
+        hashed_password = hash_password("1234")
+
         # Insertar usuario administrador por defecto si no existe
         if not self.fetch_one("SELECT id FROM usuarios WHERE username = 'admin'"):
-            self.execute_query("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, ?)", 
-                               ("admin", "1234", "admin"))
-            print("Usuario 'admin' creado.")
+            self.execute_query("INSERT INTO usuarios (username, password, nombre_completo, rol) VALUES (?, ?, ?, ?)", 
+                               ("admin", hashed_password, "Administrador Principal", "Administrador Total"))
+            print("Usuario 'admin' creado con contraseña hasheada y rol 'Administrador Total'.")
             
         # Insertar productos de prueba si no hay ninguno
         if not self.fetch_one("SELECT id FROM productos"):
@@ -191,8 +205,66 @@ class DatabaseManager:
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
                                ("exchange_rate", "36.00")) # Valor por defecto
             print("Tasa de cambio por defecto (36.00) inicializada.")
+            
+        # Insertar Nombre y Logo de la Empresa por defecto (si no existen)
+        if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'company_name'"):
+            self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
+                               ("company_name", "Mi Empresa Ejemplo")) 
+            self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
+                               ("company_logo_path", "logo_default.png")) # Ruta de logo por defecto
+            print("Configuración de empresa inicializada.")
 
-    # --- Funciones Específicas para Tasa de Cambio ---
+
+    # --- Funciones Específicas de Usuarios y Autenticación ---
+
+    def authenticate_user(self, username, password):
+        """Verifica las credenciales del usuario y devuelve el objeto Row si es exitoso."""
+        user_row = self.fetch_one("SELECT * FROM usuarios WHERE username = ?", (username,))
+        
+        if user_row:
+            # Verifica la contraseña hasheada
+            if verify_password(user_row['password'], password):
+                return user_row # Retorna el objeto Row del usuario
+        return None
+    
+    def get_all_users(self):
+        """Devuelve todos los usuarios registrados."""
+        return self.fetch_all("SELECT id, username, nombre_completo, rol FROM usuarios")
+    
+    def create_user(self, username, password, full_name, role):
+        """Crea un nuevo usuario con la contraseña hasheada."""
+        hashed_pw = hash_password(password)
+        return self.execute_query(
+            "INSERT INTO usuarios (username, password, nombre_completo, rol) VALUES (?, ?, ?, ?)", 
+            (username, hashed_pw, full_name, role)
+        )
+
+    def delete_user(self, user_id):
+        """Elimina un usuario por su ID."""
+        return self.execute_query("DELETE FROM usuarios WHERE id = ?", (user_id,))
+    
+    def update_user_role(self, user_id, new_role):
+        """Actualiza el rol de un usuario existente."""
+        return self.execute_query("UPDATE usuarios SET rol = ? WHERE id = ?", (new_role, user_id))
+    
+    def update_user_password(self, user_id, new_password):
+        """Actualiza la contraseña de un usuario (hasheada)."""
+        hashed_pw = hash_password(new_password)
+        return self.execute_query("UPDATE usuarios SET password = ? WHERE id = ?", (hashed_pw, user_id))
+
+    # --- Funciones Específicas de Configuración ---
+    
+    def get_company_config(self, key):
+        """Obtiene un valor de configuración (ej: company_name, company_logo_path)."""
+        row = self.fetch_one("SELECT value FROM configuracion WHERE key = ?", (key,))
+        return row['value'] if row else None
+
+    def set_company_config(self, key, value):
+        """Guarda o actualiza un valor de configuración."""
+        self.execute_query("""
+            INSERT OR REPLACE INTO configuracion (key, value)
+            VALUES (?, ?)
+        """, (key, str(value)))
 
     def get_exchange_rate(self):
         """Obtiene la tasa de cambio actual desde la tabla de configuración."""
@@ -213,33 +285,62 @@ class DatabaseManager:
         """, (str(rate),))
 
 
+    # --- Funciones CRUD de Productos (Implementadas) ---
+    
+    def get_all_products(self):
+        """Obtiene todos los productos, ordenados por nombre."""
+        query = "SELECT * FROM productos ORDER BY nombre COLLATE NOCASE ASC"
+        return self.fetch_all(query)
+
+    def get_product_by_id(self, product_id):
+        """Obtiene un producto por su ID."""
+        query = "SELECT * FROM productos WHERE id = ?"
+        return self.fetch_one(query, (product_id,))
+
+    def get_product_by_code(self, codigo):
+        """Obtiene un producto por su código (para búsquedas rápidas)."""
+        query = "SELECT * FROM productos WHERE codigo = ?"
+        return self.fetch_one(query, (codigo,))
+
+    def create_product(self, codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca):
+        """Crea un nuevo producto en la DB. Todos los precios son en USD."""
+        sql = """
+            INSERT INTO productos (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        # precio_venta y precio_costo deben ser floats (USD)
+        return self.execute_query(sql, (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca))
+
+    def update_product(self, product_id, codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca):
+        """Actualiza todos los campos de un producto existente. Todos los precios son en USD."""
+        sql = """
+            UPDATE productos SET 
+                codigo = ?, nombre = ?, stock = ?, 
+                precio_venta = ?, precio_costo = ?, categoria = ?, 
+                proveedor = ?, stock_minimo = ?, marca = ?
+            WHERE id = ?
+        """
+        return self.execute_query(sql, (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca, product_id))
+
+    def delete_product(self, product_id):
+        """Elimina un producto por su ID."""
+        return self.execute_query("DELETE FROM productos WHERE id = ?", (product_id,))
+
     # --- MÉTODO TRANSACCIONAL CRUCIAL ---
 
     def process_sale_transaction(self, cart_data, total_final_usd, current_rate, user_id):
         """
         Ejecuta una transacción atómica para registrar la venta y descontar el stock.
-        
-        :param cart_data: Diccionario del carrito con {p_id: {'nombre', 'precio_usd', 'stock_real', 'cantidad'}}
-        :param total_final_usd: Total de la venta calculado en USD.
-        :param current_rate: Tasa de cambio usada en la venta.
-        :param user_id: ID del usuario que registra la venta.
-        :return: (True, "Mensaje de éxito") o (False, "Mensaje de error").
         """
-        # Usaremos una nueva conexión local para esta transacción para garantizar el rollback/commit
-        # Aunque la clase ya usa self.conn, lo manejaremos con un cursor local y explícito
-        
         conn = self.conn
         cursor = conn.cursor()
         
         # 1. Chequeo de stock (Reconfirmar justo antes de la transacción)
         for p_id, data in cart_data.items():
             cantidad_vendida = data['cantidad']
+            # NOTA: stock_real debe ser pasado desde la capa de la aplicación (UI)
+            stock_real = data.get('stock_real', 0) 
             
-            # Usamos el stock_real del carrito, que se cargó desde la DB inicialmente
-            stock_real = data['stock_real'] 
-            
-            # El stock disponible es el real menos la cantidad que ya está en el carrito (incluyendo esta venta)
-            # Como la vista ya validó el stock, este es un doble chequeo de seguridad.
             if stock_real < cantidad_vendida:
                 return False, f"Stock insuficiente (solo quedan {stock_real}) para el producto: {data['nombre']}."
 
@@ -298,7 +399,3 @@ class DatabaseManager:
             conn.rollback()
             print(f"Error inesperado en la transacción de venta: {e}")
             return False, f"Error inesperado: {e}"
-
-    # --- Funciones CRUD de Productos ---
-    # (El resto de tus métodos de DB, como insert_product, get_product_by_id, etc. irían aquí)
-    # ...

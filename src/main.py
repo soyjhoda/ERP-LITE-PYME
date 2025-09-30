@@ -4,16 +4,17 @@ from datetime import datetime
 from PIL import Image
 
 # --- IMPORTACIONES ---
-from .db_manager import DatabaseManager
+# Ahora importamos también las funciones de seguridad para usarlas aquí si es necesario
+from .db_manager import DatabaseManager, verify_password, hash_password 
 from .dashboard import DashboardFrame as Dashboard 
 # ---------------------
 
 # Definición de colores
-ACCENT_CYAN = "#00FFFF"       
-ACCENT_GREEN = "#00c853"      
-BACKGROUND_DARK = "#0D1B2A"   
-FRAME_MID = "#1B263B"         
-FRAME_DARK = "#1B263B"        
+ACCENT_CYAN = "#00FFFF"      
+ACCENT_GREEN = "#00c853"     
+BACKGROUND_DARK = "#0D1B2A"  
+FRAME_MID = "#1B263B"      
+FRAME_DARK = "#1B263B"      
 
 LOGO_PATH = "assets/images/logo.png"
 
@@ -37,6 +38,7 @@ class App(ctk.CTk):
         configure_ttk_styles(self)
         
         self.current_user_id = None 
+        self.current_user_role = None # ¡Nuevo: Almacenaremos el rol!
         
         self.login_frame = self._create_login_frame(self)
         self.login_frame.pack(pady=0, padx=0, fill="both", expand=True)
@@ -92,24 +94,34 @@ class App(ctk.CTk):
     
     
     def login_event(self):
-        """Maneja la lógica de inicio de sesión."""
+        """Maneja la lógica de inicio de sesión, usando la función segura de la DB."""
         username = self.username_entry.get()
         password = self.password_entry.get()
 
-        user_data = self.db.fetch_one("SELECT id, username, password FROM usuarios WHERE username = ?", (username,))
+        # Usamos el nuevo método authenticate_user que verifica el hash
+        user_data = self.db.authenticate_user(username, password)
         
-        if user_data and user_data[2] == password:
-            self.current_user_id = user_data[0] 
-            messagebox.showinfo("Éxito", f"¡Bienvenido, {username}!")
-            self.show_dashboard() 
+        if user_data:
+            # Autenticación exitosa
+            self.current_user_id = user_data['id'] 
+            self.current_user_role = user_data['rol'] # Guardamos el rol del usuario
+            
+            # Mensaje de bienvenida más específico
+            messagebox.showinfo("Éxito", f"¡Bienvenido, {user_data['nombre_completo']}! (Rol: {self.current_user_role})")
+            
+            # Pasamos el rol al dashboard para controlar la visibilidad de los botones
+            self.show_dashboard(self.current_user_role) 
         else:
+            # Autenticación fallida
             messagebox.showerror("Error de Autenticación", "Usuario o contraseña incorrectos.")
 
-    def show_dashboard(self):
+    def show_dashboard(self, user_role):
         """Muestra el Dashboard principal de la aplicación, reemplazando el login."""
         self.login_frame.destroy() 
         self.title("PROFITUS | ERP Lite para PYMES")
-        dashboard_frame = Dashboard(self, self.db, self.current_user_id) 
+        
+        # Pasamos el rol del usuario al Dashboard
+        dashboard_frame = Dashboard(self, self.db, self.current_user_id, user_role) 
         dashboard_frame.pack(expand=True, fill="both")
         
     def destroy(self):
