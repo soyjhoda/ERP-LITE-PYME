@@ -2,8 +2,8 @@ import sqlite3
 from sqlite3 import Error
 from datetime import datetime
 import hashlib 
-import os # Importado para manejo de archivos
-import shutil # Importado para copiar/reemplazar archivos
+import os 
+import shutil 
 
 # Nombre del archivo de la base de datos
 DB_FILE = 'profitus.db'
@@ -25,7 +25,7 @@ class DatabaseManager:
     
     def __init__(self):
         """Inicializa la conexión con la base de datos y crea tablas si no existen."""
-        self.db_path = DB_FILE # Guardamos la ruta del archivo principal
+        self.db_path = DB_FILE 
         self.conn = None
         self.connect()
         self.create_default_tables() 
@@ -34,9 +34,8 @@ class DatabaseManager:
     def connect(self):
         """Establece la conexión con la base de datos."""
         try:
-            # Conexión principal
             self.conn = sqlite3.connect(self.db_path)
-            self.conn.row_factory = sqlite3.Row # Permite acceder a las columnas por nombre
+            self.conn.row_factory = sqlite3.Row 
             print(f"Conectado a la DB: {self.db_path}")
         except Error as e:
             print(f"Error al conectar con SQLite: {e}")
@@ -45,7 +44,7 @@ class DatabaseManager:
         """Cierra la conexión con la base de datos."""
         if self.conn:
             self.conn.close()
-            self.conn = None # Establecer a None para indicar que está cerrada
+            self.conn = None
             print("Conexión a la DB cerrada.")
 
     def execute_query(self, query, params=()):
@@ -91,15 +90,22 @@ class DatabaseManager:
         """Verifica si una columna existe y la añade si no. (Para migraciones)"""
         if not self.conn: return
         try:
-            # Intenta seleccionar la columna para ver si existe
-            self.conn.execute(f"SELECT {column_name} FROM {table_name} LIMIT 1")
+            # PRAGMA table_info se usa para obtener el esquema de la tabla
+            # Esto es más robusto que un SELECT que podría fallar si la tabla está vacía.
+            cursor = self.conn.execute(f"PRAGMA table_info({table_name})")
+            columns = [info[1] for info in cursor.fetchall()]
+            if column_name not in columns:
+                 self.execute_query(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                 print(f"Columna '{column_name}' añadida a la tabla '{table_name}'.")
+
         except sqlite3.OperationalError:
-            # Si la columna no existe (OperationalError), la añadimos.
-            self.execute_query(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
-            print(f"Columna '{column_name}' añadida a la tabla '{table_name}'.")
+            # Esto maneja el caso donde la tabla no existe, pero create_default_tables lo gestiona.
+            pass
+        except Exception as e:
+            print(f"Error al verificar/añadir columna {column_name} en {table_name}: {e}")
 
     def create_default_tables(self):
-        """Crea las tablas y asegura la existencia de los nuevos campos de producto."""
+        """Crea las tablas y asegura la existencia de los nuevos campos."""
         
         # 1. Tabla de Usuarios
         self.execute_query("""
@@ -108,7 +114,8 @@ class DatabaseManager:
                 username TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
                 nombre_completo TEXT,
-                rol TEXT NOT NULL DEFAULT 'Cajero'
+                rol TEXT NOT NULL DEFAULT 'Cajero',
+                foto_path TEXT -- AÑADIDO: Columna para la ruta de la foto de perfil
             )
         """)
         
@@ -125,11 +132,15 @@ class DatabaseManager:
             )
         """)
 
-        # Añadir los nuevos campos a la tabla de productos si no existen (Manejo de migraciones)
+        # Migraciones (Añadir campos si no existen)
         self._check_and_add_column('productos', 'proveedor', 'TEXT')
         self._check_and_add_column('productos', 'stock_minimo', 'REAL NOT NULL DEFAULT 0')
         self._check_and_add_column('productos', 'marca', 'TEXT')
         self._check_and_add_column('productos', 'categoria', 'TEXT')
+        
+        # MIGRACIÓN DE USUARIOS (NUEVO CAMPO)
+        self._check_and_add_column('usuarios', 'foto_path', 'TEXT') 
+        self._check_and_add_column('usuarios', 'nombre_completo', 'TEXT')
 
         # 3. Tabla de Configuración (Nombre, Logo, Tasa de Cambio)
         self.execute_query("""
@@ -169,34 +180,29 @@ class DatabaseManager:
             )
         """)
         
-        # Migración: Aseguramos que los campos de moneda existen en detalles_venta
+        # Migraciones para detalles_venta y ventas
         self._check_and_add_column('detalles_venta', 'precio_unitario_bs', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'subtotal_bs', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'precio_unitario_usd', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'subtotal_usd', 'REAL NOT NULL DEFAULT 0.0')
-        
-        # Aseguramos que la tabla de Ventas tiene el user_id
         self._check_and_add_column('ventas', 'user_id', 'INTEGER')
-        # Aseguramos que la tabla de Usuarios tiene el nombre_completo
-        self._check_and_add_column('usuarios', 'nombre_completo', 'TEXT')
+        
             
     def initialize_default_config(self):
         """Inserta la configuración inicial por defecto (Admin, productos de prueba, tasa de cambio)."""
         
-        # Hash de la contraseña "1234"
         hashed_password = hash_password("1234")
 
         # Insertar usuario administrador por defecto si no existe
         if not self.fetch_one("SELECT id FROM usuarios WHERE username = 'admin'"):
-            self.execute_query("INSERT INTO usuarios (username, password, nombre_completo, rol) VALUES (?, ?, ?, ?)", 
-                               ("admin", hashed_password, "Administrador Principal", "Administrador Total"))
+            # Incluye foto_path = None por defecto
+            self.execute_query("INSERT INTO usuarios (username, password, nombre_completo, rol, foto_path) VALUES (?, ?, ?, ?, ?)", 
+                               ("admin", hashed_password, "Administrador Principal", "Administrador Total", None)) 
             print("Usuario 'admin' creado con contraseña hasheada y rol 'Administrador Total'.")
             
         # Insertar productos de prueba si no hay ninguno
         if not self.fetch_one("SELECT id FROM productos"):
-            # DATOS DE PRUEBA ACTUALIZADOS A USD Y NUEVOS CAMPOS
             products_to_insert = [
-                # codigo, nombre, stock, precio_venta (USD), precio_costo (USD), categoria, proveedor, stock_minimo, marca
                 ('P001', 'Laptop Gamer X', 10, 850.50, 600.00, 'Electrónica', 'TechGlobal Inc.', 5, 'Alienware'),
                 ('H001', 'Martillo Mango Fibra', 45, 8.00, 5.00, 'Herramientas', 'FerreMax S.A.', 10, 'Truper'),
                 ('P002', 'Monitor Curvo 27"', 25, 250.00, 180.00, 'Electrónica', 'TechGlobal Inc.', 10, 'Samsung'),
@@ -213,43 +219,43 @@ class DatabaseManager:
                 self.execute_query(sql_insert, prod)
             print("Productos de prueba insertados con datos USD y campos extendidos.")
             
-        # Insertar Tasa de Cambio por defecto (si no existe)
+        # Configuración de la empresa
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'exchange_rate'"):
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
-                               ("exchange_rate", "36.00")) # Valor por defecto
+                               ("exchange_rate", "36.00")) 
             print("Tasa de cambio por defecto (36.00) inicializada.")
             
-        # Insertar Nombre y Logo de la Empresa por defecto (si no existen)
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'company_name'"):
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
                                ("company_name", "Mi Empresa Ejemplo")) 
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
-                               ("company_logo_path", "logo_default.png")) # Ruta de logo por defecto
+                               ("company_logo_path", "logo_default.png")) 
             print("Configuración de empresa inicializada.")
 
 
     # --- Funciones Específicas de Usuarios y Autenticación ---
 
     def authenticate_user(self, username, password):
-        """Verifica las credenciales del usuario y devuelve el objeto Row si es exitoso."""
+        """Verifica las credenciales del usuario y devuelve el objeto Row si es exitoso (incluye foto_path)."""
+        # SELECT * asegura que se obtengan todos los campos, incluyendo 'foto_path'
         user_row = self.fetch_one("SELECT * FROM usuarios WHERE username = ?", (username,))
         
         if user_row:
-            # Verifica la contraseña hasheada
             if verify_password(user_row['password'], password):
-                return user_row # Retorna el objeto Row del usuario
+                return user_row 
         return None
     
     def get_all_users(self):
-        """Devuelve todos los usuarios registrados."""
-        return self.fetch_all("SELECT id, username, nombre_completo, rol FROM usuarios")
+        """Devuelve todos los usuarios registrados (incluye foto_path)."""
+        # Aseguramos que se incluye foto_path en la selección
+        return self.fetch_all("SELECT id, username, nombre_completo, rol, foto_path FROM usuarios")
     
-    def create_user(self, username, password, full_name, role):
-        """Crea un nuevo usuario con la contraseña hasheada."""
+    def create_user(self, username, password, full_name, role, foto_path=None):
+        """Crea un nuevo usuario con la contraseña hasheada y foto_path opcional."""
         hashed_pw = hash_password(password)
         return self.execute_query(
-            "INSERT INTO usuarios (username, password, nombre_completo, rol) VALUES (?, ?, ?, ?)", 
-            (username, hashed_pw, full_name, role)
+            "INSERT INTO usuarios (username, password, nombre_completo, rol, foto_path) VALUES (?, ?, ?, ?, ?)", 
+            (username, hashed_pw, full_name, role, foto_path)
         )
 
     def delete_user(self, user_id):
@@ -264,6 +270,15 @@ class DatabaseManager:
         """Actualiza la contraseña de un usuario (hasheada)."""
         hashed_pw = hash_password(new_password)
         return self.execute_query("UPDATE usuarios SET password = ? WHERE id = ?", (hashed_pw, user_id))
+
+    def update_user_photo_path(self, user_id, path):
+        """ACTUALIZADA: Actualiza la ruta de la foto de perfil de un usuario."""
+        return self.execute_query("UPDATE usuarios SET foto_path = ? WHERE id = ?", (path, user_id))
+        
+    def get_user_photo_path(self, user_id):
+        """NUEVA: Obtiene la ruta de la foto de perfil de un usuario."""
+        row = self.fetch_one("SELECT foto_path FROM usuarios WHERE id = ?", (user_id,))
+        return row['foto_path'] if row else None
 
     # --- Funciones Específicas de Configuración ---
     
@@ -287,8 +302,8 @@ class DatabaseManager:
                 return float(row['value']) 
             except ValueError:
                 print("Advertencia: El valor de la tasa de cambio no es un número válido.")
-                return 0.0 # Valor por defecto seguro
-        return 0.0 # Valor por defecto seguro
+                return 0.0 
+        return 0.0 
 
     def set_exchange_rate(self, rate):
         """Guarda o actualiza la tasa de cambio en la tabla de configuración."""
@@ -307,10 +322,8 @@ class DatabaseManager:
             return False, "La conexión a la base de datos no está activa."
             
         try:
-            # 1. Crear una nueva conexión a la ruta de destino
             dest_conn = sqlite3.connect(destination_path)
             
-            # 2. Usar el método backup() de SQLite para copiar los datos
             with dest_conn:
                 self.conn.backup(dest_conn)
             
@@ -324,43 +337,35 @@ class DatabaseManager:
             print(f"Error inesperado durante el backup: {e}")
             return False, f"Error inesperado: {e}"
             
-    # --- FUNCIÓN NUEVA: Restauración de la DB (Importar) ---
+    # --- Restauración de la DB (Importar) ---
     def restore_backup(self, source_path):
         """
         Restaura la base de datos principal copiando el archivo de backup 
         desde la ruta especificada. Cierra la conexión actual antes de copiar.
         """
-        # 1. Verificar si el archivo de origen existe
         if not os.path.exists(source_path):
             return False, "Error: El archivo de backup de origen no fue encontrado."
 
-        # 2. Obtener la ruta del archivo principal (profitus.db)
         main_db_path = self.db_path
 
-        # 3. Intentar cerrar la conexión a la base de datos (CRUCIAL para poder reemplazar el archivo)
         try:
-            self.close() # Llama a la función 'close' que también pone self.conn = None
+            self.close()
         except Exception as e:
-            # Si hay un error al cerrar, intentamos reabrir por si acaso y reportamos el error
             self.connect() 
             return False, f"Error al intentar cerrar la conexión a la DB: {e}"
 
-        # 4. Realizar la copia del archivo (reemplazando el archivo actual)
         try:
-            # shutil.copy2 copia el archivo, incluyendo metadatos, y reemplaza el destino.
             shutil.copy2(source_path, main_db_path) 
-
-            # 5. Volver a abrir la conexión (preparación para el siguiente uso)
             self.connect() 
             
             return True, f"Base de datos restaurada exitosamente desde: {source_path}"
             
         except shutil.Error as e:
-            self.connect() # Reabrir conexión por si acaso
+            self.connect() 
             return False, f"Error de copia de archivo (permisos o en uso): {e}"
             
         except Exception as e:
-            self.connect() # Reabrir conexión por si acaso
+            self.connect() 
             return False, f"Error inesperado durante la restauración: {e}"
 
     # --- Funciones CRUD de Productos (Implementadas) ---
@@ -386,7 +391,6 @@ class DatabaseManager:
             INSERT INTO productos (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        # precio_venta y precio_costo deben ser floats (USD)
         return self.execute_query(sql, (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca))
 
     def update_product(self, product_id, codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca):
@@ -419,7 +423,6 @@ class DatabaseManager:
         # 1. Chequeo de stock (Reconfirmar justo antes de la transacción)
         for p_id, data in cart_data.items():
             cantidad_vendida = data['cantidad']
-            # NOTA: stock_real debe ser pasado desde la capa de la aplicación (UI)
             stock_real = data.get('stock_real', 0) 
             
             if stock_real < cantidad_vendida:
@@ -428,7 +431,7 @@ class DatabaseManager:
         try:
             # INICIO DE LA TRANSACCIÓN
             fecha_venta = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            total_final_bs = total_final_usd * current_rate # Calcular total en BsF
+            total_final_bs = total_final_usd * current_rate 
             
             # A. Insertar Encabezado de Venta (Tabla 'ventas')
             cursor.execute("""
@@ -443,7 +446,6 @@ class DatabaseManager:
                 cantidad = data['cantidad']
                 precio_unitario_usd = data['precio_usd'] 
                 
-                # Calcular valores en Bs
                 precio_unitario_bs = precio_unitario_usd * current_rate
                 subtotal_usd = cantidad * precio_unitario_usd
                 subtotal_bs = cantidad * precio_unitario_bs
@@ -470,13 +472,11 @@ class DatabaseManager:
             return True, f"Venta {venta_id} procesada con éxito."
 
         except Error as e:
-            # Si ocurre cualquier error de SQL, revertir los cambios
             conn.rollback() 
             print(f"Error fatal de SQL en la transacción de venta: {e}")
             return False, f"Error de base de datos: {e}"
             
         except Exception as e:
-            # Si ocurre cualquier otro error, revertir los cambios
             conn.rollback()
             print(f"Error inesperado en la transacción de venta: {e}")
             return False, f"Error inesperado: {e}"

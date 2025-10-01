@@ -14,12 +14,11 @@ FRAME_LIGHT = "#2c3e50"
 class ConfigPage(ctk.CTkFrame):
     """Panel de Administración centralizado para tareas sensibles (Tasa, Usuarios, Seguridad)."""
     
-    # CONSTRUCTOR ACTUALIZADO: Acepta y guarda el rol del usuario
     def __init__(self, master, db_manager, user_id, update_rate_callback, user_role):
         super().__init__(master, fg_color=BACKGROUND_DARK)
         self.db = db_manager
         self.user_id = user_id
-        self.user_role = user_role # ¡Nuevo! Rol del usuario actual
+        self.user_role = user_role # Rol del usuario actual
         self.update_rate_callback = update_rate_callback
         
         self.grid_rowconfigure(1, weight=1) # El TabView ocupa todo el espacio debajo del título
@@ -27,12 +26,18 @@ class ConfigPage(ctk.CTkFrame):
         
         # Estado para la gestión de usuarios
         self.current_selected_user_id = None
-        self.mock_users_data = {} # Para simular datos de usuarios antes de la conexión real
+        self.users_data = {} # Almacenará los datos de usuarios (simulados o reales)
+        
+        # Referencias de botones para control de estado (mejora de UX)
+        self.delete_user_button = None
+        self.save_role_button = None
 
+        self._configure_ttk_style()
         self._create_widgets()
         self.load_current_rate()
-        
-        # Configuración inicial del tema ttk para el Treeview
+    
+    def _configure_ttk_style(self):
+        """Configuración de estilo para el Treeview (ttk)."""
         style = ttk.Style()
         style.theme_use("clam") # 'clam' theme works well with dark customtkinter
         style.configure("Treeview", 
@@ -47,7 +52,6 @@ class ConfigPage(ctk.CTkFrame):
                         foreground=ACCENT_CYAN)
         style.map('Treeview', background=[('selected', ACCENT_CYAN)])
 
-
     def _create_widgets(self):
         """Crea todos los elementos de la UI, organizados por pestañas."""
         
@@ -57,8 +61,8 @@ class ConfigPage(ctk.CTkFrame):
         title_frame.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(title_frame, text="🛡️ PANEL DE ADMINISTRACIÓN", 
-                             font=ctk.CTkFont(size=26, weight="bold"), 
-                             text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 10))
+                                 font=ctk.CTkFont(size=26, weight="bold"), 
+                                 text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 10))
 
         # --- TabView para organizar secciones ---
         self.tabview = ctk.CTkTabview(self, fg_color=BACKGROUND_DARK, segmented_button_fg_color=FRAME_MID)
@@ -69,12 +73,13 @@ class ConfigPage(ctk.CTkFrame):
         self._setup_empresa_tab(self.tabview.tab("Empresa y Finanzas"))
         
         # --- Pestaña 2: Gestión de Usuarios (Restringida) ---
-        # Solo añadimos la pestaña de usuarios si el rol es Administrador Total
         if self.user_role == "Administrador Total":
             self.tabview.add("Gestión de Usuarios")
             self._setup_users_tab(self.tabview.tab("Gestión de Usuarios"))
+            self.load_users_data() # Cargar datos iniciales/reales de usuarios
         else:
-             print(f"Usuario {self.user_role} no tiene acceso a la gestión de usuarios.")
+            # En un entorno de producción, esto sería un log, pero se mantiene para desarrollo.
+            print(f"Usuario {self.user_role} no tiene acceso a la gestión de usuarios.") 
         
         # --- Pestaña 3: Herramientas y Seguridad ---
         self.tabview.add("Herramientas y Seguridad")
@@ -90,8 +95,8 @@ class ConfigPage(ctk.CTkFrame):
     def _setup_empresa_tab(self, tab_frame):
         """Configura la pestaña de Tasa de Cambio."""
         tab_frame.grid_columnconfigure(0, weight=1)
-        tab_frame.grid_rowconfigure(0, weight=0) # Fila de la tarjeta de tasa
-        tab_frame.grid_rowconfigure(1, weight=1) # Espacio libre
+        tab_frame.grid_rowconfigure(0, weight=0)
+        tab_frame.grid_rowconfigure(1, weight=1)
 
         # Tarjeta de Tasa de Cambio
         rate_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
@@ -99,14 +104,14 @@ class ConfigPage(ctk.CTkFrame):
         rate_card.grid_columnconfigure((0, 1), weight=1)
         
         ctk.CTkLabel(rate_card, text="Tasa de Cambio Actual (Bs/USD)", 
-                             font=ctk.CTkFont(size=18, weight="bold"), 
-                             text_color="white").grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(15, 5))
+                                 font=ctk.CTkFont(size=18, weight="bold"), 
+                                 text_color="white").grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(15, 5))
         
         # Valor Actual
         ctk.CTkLabel(rate_card, text="Valor Actual:", text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(10, 0))
         self.current_rate_label = ctk.CTkLabel(rate_card, text="Cargando...", 
-                                                     font=ctk.CTkFont(size=22, weight="bold"), 
-                                                     text_color=ACCENT_GREEN)
+                                                 font=ctk.CTkFont(size=22, weight="bold"), 
+                                                 text_color=ACCENT_GREEN)
         self.current_rate_label.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 20))
         
         # Establecer Nueva Tasa
@@ -116,21 +121,21 @@ class ConfigPage(ctk.CTkFrame):
         
         # Botón para guardar
         save_button = ctk.CTkButton(rate_card, text="💾 Guardar Tasa", 
-                                            command=self.save_exchange_rate, 
-                                            fg_color=ACCENT_CYAN, 
-                                            text_color=BACKGROUND_DARK,
-                                            hover_color=ACCENT_CYAN.lower().replace('f', 'e'))
+                                         command=self.save_exchange_rate, 
+                                         fg_color=ACCENT_CYAN, 
+                                         text_color=BACKGROUND_DARK,
+                                         hover_color="#00bebe") # Color ajustado para hover más suave
         save_button.grid(row=3, column=0, columnspan=2, pady=(0, 20))
 
     def _setup_users_tab(self, tab_frame):
-        """Configura la pestaña de Gestión de Usuarios (Añadir, Editar Rol, Eliminar)."""
+        """Configura la pestaña de Gestión de Usuarios."""
         tab_frame.grid_columnconfigure(0, weight=1)
-        tab_frame.grid_rowconfigure(1, weight=1) # El contenido principal ocupa espacio
+        tab_frame.grid_rowconfigure(1, weight=1)
 
         # Título
         ctk.CTkLabel(tab_frame, text="👩‍💻 GESTIÓN DE CUENTAS DE USUARIO", 
-                             font=ctk.CTkFont(size=20, weight="bold"), 
-                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+                                 font=ctk.CTkFont(size=20, weight="bold"), 
+                                 text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
 
         # Contenedor principal para la gestión
         main_container = ctk.CTkFrame(tab_frame, fg_color=FRAME_LIGHT, corner_radius=10)
@@ -146,10 +151,10 @@ class ConfigPage(ctk.CTkFrame):
         list_frame.grid_rowconfigure(1, weight=1)
         
         ctk.CTkLabel(list_frame, text="Usuarios Registrados (Click para editar)", 
-                             font=ctk.CTkFont(size=16, weight="bold"), 
-                             text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 5))
+                                 font=ctk.CTkFont(size=16, weight="bold"), 
+                                 text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 5))
 
-        # Treeview (usando ttk para la tabla con scroll)
+        # Treeview
         self.users_tree = ttk.Treeview(list_frame, columns=("ID", "Nombre", "Rol"), show="headings")
         self.users_tree.heading("ID", text="ID (Corto)", anchor=ctk.W)
         self.users_tree.heading("Nombre", text="Nombre de Usuario", anchor=ctk.W)
@@ -176,8 +181,8 @@ class ConfigPage(ctk.CTkFrame):
         
         # Título del panel de control
         ctk.CTkLabel(control_frame, text="Control de Roles", 
-                             font=ctk.CTkFont(size=16, weight="bold"), 
-                             text_color="white").grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
+                                 font=ctk.CTkFont(size=16, weight="bold"), 
+                                 text_color="white").grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
 
         # ID (solo lectura)
         ctk.CTkLabel(control_frame, text="ID de Usuario:", text_color="gray70").grid(row=1, column=0, sticky="w", padx=15, pady=(10, 0))
@@ -198,23 +203,24 @@ class ConfigPage(ctk.CTkFrame):
         self.role_combobox.grid(row=6, column=0, sticky="ew", padx=15, pady=(0, 20))
 
         # Botón de Guardar
-        ctk.CTkButton(control_frame, text="Guardar Cambios", command=self.save_user_role, 
-                      fg_color=ACCENT_GREEN, hover_color="#008a38").grid(row=7, column=0, sticky="ew", padx=15, pady=(0, 10))
+        self.save_role_button = ctk.CTkButton(control_frame, text="Guardar Cambios", command=self.save_user_role, 
+                      fg_color=ACCENT_GREEN, hover_color="#008a38")
+        self.save_role_button.grid(row=7, column=0, sticky="ew", padx=15, pady=(0, 10))
         
-        # Botón de Eliminar (Añadir Advertencia)
-        ctk.CTkButton(control_frame, text="Eliminar Usuario 🗑️", command=self.delete_user, 
-                      fg_color=ACCENT_RED, hover_color="#8b0000").grid(row=8, column=0, sticky="ew", padx=15, pady=(0, 15))
+        # Botón de Eliminar (Referencia guardada para control de estado)
+        self.delete_user_button = ctk.CTkButton(control_frame, text="Eliminar Usuario 🗑️", command=self.delete_user, 
+                      fg_color=ACCENT_RED, hover_color="#8b0000")
+        self.delete_user_button.grid(row=8, column=0, sticky="ew", padx=15, pady=(0, 15))
 
-        self._load_mock_users() # Cargar datos iniciales/reales
 
     def _setup_security_tab(self, tab_frame):
         """Configura la pestaña de Herramientas y Seguridad (Backup, Info)."""
         tab_frame.grid_columnconfigure(0, weight=1)
-        tab_frame.grid_rowconfigure(3, weight=1) # Ajustamos rowconfigure para dar espacio a dos tarjetas
+        tab_frame.grid_rowconfigure(3, weight=1)
 
         ctk.CTkLabel(tab_frame, text="🔑 HERRAMIENTAS Y COPIA DE SEGURIDAD", 
-                             font=ctk.CTkFont(size=20, weight="bold"), 
-                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+                                 font=ctk.CTkFont(size=20, weight="bold"), 
+                                 text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
 
         # --- TARJETA DE BACKUP (Exportar) ---
         backup_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
@@ -222,32 +228,31 @@ class ConfigPage(ctk.CTkFrame):
         backup_card.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(backup_card, text="Copia de Seguridad (Exportar)", 
-                             font=ctk.CTkFont(size=16, weight="bold"), 
-                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
+                                 font=ctk.CTkFont(size=16, weight="bold"), 
+                                 text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
         
         ctk.CTkLabel(backup_card, text="Guarda una copia de seguridad de la base de datos (profitus.db) en una ruta externa.", 
-                             text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
+                                 text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
         ctk.CTkButton(backup_card, text="⬇️ Generar Backup", command=self.create_backup, 
-                              fg_color=ACCENT_GREEN, hover_color="#008a38",
-                              font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
-                              
+                                 fg_color=ACCENT_GREEN, hover_color="#008a38",
+                                 font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                                 
         # --- TARJETA DE RESTAURACIÓN (Importar) ---
         restore_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
         restore_card.grid(row=2, column=0, sticky="ew", padx=20, pady=(5, 20))
         restore_card.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(restore_card, text="Restaurar Base de Datos (Importar)", 
-                             font=ctk.CTkFont(size=16, weight="bold"), 
-                             text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
+                                 font=ctk.CTkFont(size=16, weight="bold"), 
+                                 text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
         
         ctk.CTkLabel(restore_card, text="🚨 ¡PELIGRO! Reemplaza la DB actual (profitus.db) con un archivo de backup. REQUIERE REINICIO.", 
-                             text_color=ACCENT_RED).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
+                                 text_color=ACCENT_RED).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
-        # El botón llama a la nueva función de restauración
         ctk.CTkButton(restore_card, text="⬆️ Restaurar desde Backup", command=self.restore_database, 
-                              fg_color=ACCENT_RED, hover_color="#8b0000",
-                              font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                                 fg_color=ACCENT_RED, hover_color="#8b0000",
+                                 font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
 
 
     # =======================================================================
@@ -269,7 +274,6 @@ class ConfigPage(ctk.CTkFrame):
     def save_exchange_rate(self):
         """Guarda la nueva tasa de cambio y actualiza el dashboard."""
         
-        # Restricción de permiso de escritura (Administrador Total y Gerente pueden cambiar la tasa)
         if self.user_role not in ["Administrador Total", "Gerente"]:
             messagebox.showwarning("Permiso Denegado", "Solo Administradores y Gerentes pueden modificar la tasa de cambio.")
             return
@@ -280,7 +284,8 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showwarning("Advertencia", "Por favor, introduce un valor para la nueva tasa.")
             return
         
-        if not is_valid_float(new_rate_str):
+        # is_valid_float comes from .utils
+        if not is_valid_float(new_rate_str): 
             messagebox.showerror("Error de Formato", "El valor introducido no es un número decimal válido.")
             return
 
@@ -290,14 +295,14 @@ class ConfigPage(ctk.CTkFrame):
                 messagebox.showerror("Error de Valor", "La tasa de cambio debe ser mayor a cero.")
                 return
 
-            # 1. Guardar en la base de datos
+            # Lógica de DB real (Fase 4): self.db.set_exchange_rate(new_rate_float)
+            
             self.db.set_exchange_rate(new_rate_float)
             
-            # 2. Actualizar el label local en esta página
             self.current_rate_label.configure(text=f"Bs. {new_rate_float:,.2f}", text_color=ACCENT_GREEN)
             
-            # 3. Llamar al callback para actualizar el dashboard (menú lateral)
-            self.update_rate_callback()
+            # Notifica al callback principal para actualizar el valor en el menú lateral.
+            self.update_rate_callback() 
             
             self.new_rate_entry.delete(0, 'end')
             messagebox.showinfo("Éxito", f"Tasa de cambio actualizada a Bs. {new_rate_float:,.2f}.")
@@ -311,7 +316,6 @@ class ConfigPage(ctk.CTkFrame):
 
     def create_backup(self):
         """Inicia el proceso de creación de la copia de seguridad."""
-        # Restricción: Solo Administradores pueden hacer backup
         if self.user_role != "Administrador Total":
             messagebox.showwarning("Permiso Denegado", "Solo el Administrador Total puede crear copias de seguridad.")
             return
@@ -345,17 +349,15 @@ class ConfigPage(ctk.CTkFrame):
 
     def restore_database(self):
         """Inicia el proceso de restauración de la base de datos desde un archivo de backup."""
-        # Restricción: Solo Administradores pueden restaurar
         if self.user_role != "Administrador Total":
             messagebox.showwarning("Permiso Denegado", "Solo el Administrador Total puede restaurar la base de datos.")
             return
 
-        # Advertencia de seguridad crucial
         if not messagebox.askyesno("Confirmar Restauración (Peligro)", 
                                      "🚨 ¡ADVERTENCIA! Este proceso **REEMPLAZARÁ PERMANENTEMENTE** la base de datos actual.\n"
                                      "Cualquier dato añadido desde el último backup se perderá.\n\n"
                                      "¿Está SEGURO que desea continuar con la restauración?"):
-            return # El usuario canceló la operación
+            return 
         
         try:
             source_path = filedialog.askopenfilename(
@@ -370,7 +372,6 @@ class ConfigPage(ctk.CTkFrame):
             success, message = self.db.restore_backup(source_path)
             
             if success:
-                # Si la restauración es exitosa, pedimos al usuario que reinicie la app
                 messagebox.showinfo("Restauración Exitosa", 
                                      f"{message}\n\n"
                                      "***La aplicación DEBE REINICIARSE para cargar los datos restaurados.***")
@@ -381,98 +382,174 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante la restauración: {e}")
 
     # =======================================================================
-    # LÓGICA DE FUNCIONALIDADES - GESTIÓN DE USUARIOS (Fase 4 - Preparación)
+    # LÓGICA DE FUNCIONALIDADES - GESTIÓN DE USUARIOS (Corregido y Mock)
     # =======================================================================
     
-    def _load_mock_users(self):
-        """Carga datos de usuarios simulados o reales (al inicio de Fase 4)."""
-        # Limpiar datos previos
-        for item in self.users_tree.get_children():
-            self.users_tree.delete(item)
-            
-        # Simulación de datos para demostración
-        self.mock_users_data = {
-            "user_a1b2c3d4": {"name": "Admin Principal", "role": "Administrador Total"},
+    def _get_mock_users(self):
+        """Simula la obtención de usuarios. Reemplazar con self.db.get_all_users()"""
+        # Aseguramos que self.user_id se trata como una cadena si es un entero (p. ej., ID=1)
+        user_id_str = str(self.user_id) 
+        
+        mock_users = {
+            user_id_str: {"name": "Admin Logueado", "role": self.user_role},
+            "user_a1b2c3d4": {"name": "Admin Principal (Mock)", "role": "Administrador Total"},
             "user_e5f6g7h8": {"name": "Jefe de Ventas", "role": "Gerente"},
             "user_i9j0k1l2": {"name": "Maria Pérez", "role": "Vendedor"},
             "user_m3n4o5p6": {"name": "Carlos González", "role": "Vendedor"},
         }
+        # Asegurarse de que el usuario logueado tenga su entrada correcta
+        if user_id_str not in mock_users:
+             mock_users[user_id_str] = {"name": f"Usuario {user_id_str[-4:].upper()}", "role": self.user_role}
+
+        return mock_users
+
+    def load_users_data(self):
+        """Carga los datos de usuarios (simulados o reales) y actualiza la UI."""
         
-        # Insertar en el Treeview
-        for user_id, data in self.mock_users_data.items():
-            short_id = user_id[-4:].upper()
-            self.users_tree.insert("", "end", iid=user_id, 
+        # En la implementación real (Fase 4):
+        # try:
+        #     self.users_data = self.db.get_all_users()
+        # except Exception as e:
+        #     messagebox.showerror("Error", f"No se pudieron cargar los usuarios: {e}")
+        #     self.users_data = {}
+        
+        # SIMULACIÓN (MOCK):
+        self.users_data = self._get_mock_users() 
+
+        self._refresh_user_tree(self.users_data)
+        # Desactivar controles al cargar inicialmente
+        if self.delete_user_button:
+             self.delete_user_button.configure(state="disabled")
+        if self.save_role_button:
+             self.save_role_button.configure(state="disabled")
+
+
+    def _refresh_user_tree(self, users_data):
+        """Limpia y rellena el Treeview con los datos de usuario proporcionados."""
+        for item in self.users_tree.get_children():
+            self.users_tree.delete(item)
+            
+        for user_id, data in users_data.items():
+            # CORRECCIÓN: Aseguramos que user_id se trata como una cadena
+            user_id_str = str(user_id)
+            short_id = user_id_str[-4:].upper()
+            
+            # Usamos la cadena de texto como iid para el Treeview y para el ID corto
+            self.users_tree.insert("", "end", iid=user_id_str, 
                                      values=(short_id, data["name"], data["role"]))
+
 
     def _on_user_select(self, event):
         """Maneja la selección de un usuario en el Treeview para mostrar sus detalles."""
         selected_item = self.users_tree.focus()
+        
+        # Lógica para deselección o item no válido
         if not selected_item:
             self.current_selected_user_id = None
             self.edit_user_id.configure(text="Seleccione un usuario", text_color="gray50")
             self.edit_user_name.configure(text="")
             self.role_combobox.set("Vendedor")
+            self.delete_user_button.configure(state="disabled", text="Eliminar Usuario 🗑️")
+            self.save_role_button.configure(state="disabled")
             return
             
-        user_id = selected_item
-        self.current_selected_user_id = user_id
+        # El ID del usuario seleccionado es el iid (que ahora es una string)
+        user_id_str = selected_item
+        self.current_selected_user_id = user_id_str
         
-        # Recuperar datos de la simulación
-        data = self.mock_users_data.get(user_id, {"name": "Desconocido", "role": "Vendedor"})
+        # Recuperar datos del almacén local
+        data = self.users_data.get(user_id_str, {"name": "Desconocido", "role": "Vendedor"})
         
         # Actualizar panel de control
-        self.edit_user_id.configure(text=user_id[-4:].upper(), text_color="white")
+        self.edit_user_id.configure(text=user_id_str[-4:].upper(), text_color="white")
         self.edit_user_name.configure(text=data["name"])
         self.role_combobox.set(data["role"])
+        self.save_role_button.configure(state="normal")
+        
+        # Control de botones de eliminación: No permitir auto-eliminación
+        if user_id_str == str(self.user_id):
+            self.delete_user_button.configure(state="disabled", text="❌ No puedes eliminarte")
+        else:
+            self.delete_user_button.configure(state="normal", text="Eliminar Usuario 🗑️")
 
 
     def save_user_role(self):
-        """Guarda el nuevo rol del usuario seleccionado (Lógica de Fase 4)."""
+        """Guarda el nuevo rol del usuario seleccionado (Simulación - Lógica de Fase 4)."""
         if not self.current_selected_user_id:
             messagebox.showwarning("Advertencia", "Por favor, seleccione un usuario para editar su rol.")
             return
 
+        user_id_str = self.current_selected_user_id
+        user_name = self.users_data.get(user_id_str, {}).get("name", "este usuario")
+            
+        if user_id_str == str(self.user_id):
+            # Aunque no se elimina, es buena práctica evitar que el admin se rebaje el rol accidentalmente.
+            if not messagebox.askyesno("Confirmar Cambio de Rol Propio", 
+                                     "Estás a punto de cambiar tu propio rol. ¿Estás seguro de esto?"):
+                return
+
+
         new_role = self.role_combobox.get()
-        user_id = self.current_selected_user_id
         
-        # Simulación de la actualización de la DB (pendiente de implementación real en la DB Manager)
-        # self.db.update_user_role(user_id, new_role) 
+        # En la implementación real (Fase 4):
+        # try:
+        #     self.db.update_user_role(user_id_str, new_role) 
+        # except Exception as e:
+        #     messagebox.showerror("Error", f"Fallo al actualizar el rol: {e}")
+        #     return
         
-        # Actualizar datos simulados
-        if user_id in self.mock_users_data:
-            self.mock_users_data[user_id]["role"] = new_role
-            self._load_mock_users() # Recargar la tabla para reflejar el cambio
-            messagebox.showinfo("Éxito", f"Rol de usuario actualizado (Simulación).\n{user_id[-4:].upper()} ahora es: {new_role}")
+        # SIMULACIÓN (MOCK):
+        if user_id_str in self.users_data:
+            self.users_data[user_id_str]["role"] = new_role
+            self._refresh_user_tree(self.users_data) 
+            messagebox.showinfo("Éxito", f"Rol de usuario actualizado (Simulación).\n{user_name} ahora es: {new_role}")
+            
+            # Si el admin se cambia su propio rol, actualizar la etiqueta principal si es necesario.
+            if user_id_str == str(self.user_id):
+                self.user_role = new_role
+                
         else:
             messagebox.showerror("Error", "Usuario no encontrado en la lista.")
             
             
     def delete_user(self):
-        """Elimina un usuario (Lógica de Fase 4)."""
+        """Elimina un usuario (Simulación - Lógica de Fase 4)."""
         if not self.current_selected_user_id:
             messagebox.showwarning("Advertencia", "Por favor, seleccione un usuario para eliminar.")
             return
 
-        user_id = self.current_selected_user_id
-        user_name = self.mock_users_data.get(user_id, {}).get("name", "este usuario")
+        user_id_str = self.current_selected_user_id
+        user_name = self.users_data.get(user_id_str, {}).get("name", "este usuario")
+        
+        # Bloquear auto-eliminación
+        if user_id_str == str(self.user_id):
+            messagebox.showwarning("Acción Bloqueada", "No puedes eliminar tu propia cuenta de usuario.")
+            return
         
         if not messagebox.askyesno("Confirmar Eliminación", 
-                                     f"¿Está seguro que desea eliminar PERMANENTEMENTE al usuario **{user_name}** ({user_id[-4:].upper()})?\n\nEsta acción no se puede deshacer."):
+                                     f"¿Está seguro que desea eliminar PERMANENTEMENTE al usuario **{user_name}** ({user_id_str[-4:].upper()})?\n\nEsta acción no se puede deshacer."):
             return
 
-        # Simulación de la eliminación de la DB (pendiente de implementación real)
-        # self.db.delete_user(user_id)
-        
-        if user_id in self.mock_users_data:
-            del self.mock_users_data[user_id]
+        # En la implementación real (Fase 4):
+        # try:
+        #     self.db.delete_user(user_id_str)
+        # except Exception as e:
+        #     messagebox.showerror("Error", f"Fallo al eliminar el usuario: {e}")
+        #     return
+
+        # SIMULACIÓN (MOCK):
+        if user_id_str in self.users_data:
+            del self.users_data[user_id_str]
             
             # Limpiar panel de control y recargar lista
-            self._load_mock_users() 
+            self._refresh_user_tree(self.users_data)
             self.current_selected_user_id = None
             self.edit_user_id.configure(text="Seleccione un usuario", text_color="gray50")
             self.edit_user_name.configure(text="")
             self.role_combobox.set("Vendedor")
-            
+            self.delete_user_button.configure(state="disabled", text="Eliminar Usuario 🗑️")
+            self.save_role_button.configure(state="disabled")
+
             messagebox.showinfo("Éxito", f"Usuario {user_name} eliminado (Simulación).")
         else:
             messagebox.showerror("Error", "Usuario no encontrado en la lista.")
