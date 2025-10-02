@@ -91,12 +91,11 @@ class DatabaseManager:
         if not self.conn: return
         try:
             # PRAGMA table_info se usa para obtener el esquema de la tabla
-            # Esto es más robusto que un SELECT que podría fallar si la tabla está vacía.
             cursor = self.conn.execute(f"PRAGMA table_info({table_name})")
             columns = [info[1] for info in cursor.fetchall()]
             if column_name not in columns:
-                 self.execute_query(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
-                 print(f"Columna '{column_name}' añadida a la tabla '{table_name}'.")
+                self.execute_query(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                print(f"Columna '{column_name}' añadida a la tabla '{table_name}'.")
 
         except sqlite3.OperationalError:
             # Esto maneja el caso donde la tabla no existe, pero create_default_tables lo gestiona.
@@ -115,7 +114,7 @@ class DatabaseManager:
                 password TEXT NOT NULL,
                 nombre_completo TEXT,
                 rol TEXT NOT NULL DEFAULT 'Cajero',
-                foto_path TEXT -- AÑADIDO: Columna para la ruta de la foto de perfil
+                foto_path TEXT -- Columna para la ruta de la foto de perfil
             )
         """)
         
@@ -197,7 +196,7 @@ class DatabaseManager:
         if not self.fetch_one("SELECT id FROM usuarios WHERE username = 'admin'"):
             # Incluye foto_path = None por defecto
             self.execute_query("INSERT INTO usuarios (username, password, nombre_completo, rol, foto_path) VALUES (?, ?, ?, ?, ?)", 
-                               ("admin", hashed_password, "Administrador Principal", "Administrador Total", None)) 
+                                ("admin", hashed_password, "Administrador Principal", "Administrador Total", None)) 
             print("Usuario 'admin' creado con contraseña hasheada y rol 'Administrador Total'.")
             
         # Insertar productos de prueba si no hay ninguno
@@ -222,14 +221,14 @@ class DatabaseManager:
         # Configuración de la empresa
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'exchange_rate'"):
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
-                               ("exchange_rate", "36.00")) 
+                                ("exchange_rate", "36.00")) 
             print("Tasa de cambio por defecto (36.00) inicializada.")
             
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'company_name'"):
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
-                               ("company_name", "Mi Empresa Ejemplo")) 
+                                ("company_name", "Mi Empresa Ejemplo")) 
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
-                               ("company_logo_path", "logo_default.png")) 
+                                ("company_logo_path", "logo_default.png")) 
             print("Configuración de empresa inicializada.")
 
 
@@ -266,6 +265,21 @@ class DatabaseManager:
         """Actualiza el rol de un usuario existente."""
         return self.execute_query("UPDATE usuarios SET rol = ? WHERE id = ?", (new_role, user_id))
     
+    def update_user_details(self, user_id, username, full_name, role, foto_path):
+        """
+        NUEVO: Actualiza el nombre de usuario, nombre completo, rol y ruta de foto de un usuario.
+        Utiliza esta función para la edición completa del perfil.
+        """
+        sql = """
+            UPDATE usuarios SET 
+                username = ?, 
+                nombre_completo = ?, 
+                rol = ?,
+                foto_path = ?
+            WHERE id = ?
+        """
+        return self.execute_query(sql, (username, full_name, role, foto_path, user_id))
+
     def update_user_password(self, user_id, new_password):
         """Actualiza la contraseña de un usuario (hasheada)."""
         hashed_pw = hash_password(new_password)
@@ -276,7 +290,7 @@ class DatabaseManager:
         return self.execute_query("UPDATE usuarios SET foto_path = ? WHERE id = ?", (path, user_id))
         
     def get_user_photo_path(self, user_id):
-        """NUEVA: Obtiene la ruta de la foto de perfil de un usuario."""
+        """Obtiene la ruta de la foto de perfil de un usuario."""
         row = self.fetch_one("SELECT foto_path FROM usuarios WHERE id = ?", (user_id,))
         return row['foto_path'] if row else None
 

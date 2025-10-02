@@ -13,7 +13,7 @@ FRAME_MID = "#1B263B"
 FRAME_LIGHT = "#2c3e50"
 
 # =======================================================================
-# VENTANA MODAL PARA CREAR USUARIO
+# VENTANA MODAL PARA CREAR USUARIO (Mantenida)
 # =======================================================================
 
 class CreateUserWindow(ctk.CTkToplevel):
@@ -25,8 +25,8 @@ class CreateUserWindow(ctk.CTkToplevel):
         
         self.title("Crear Nuevo Usuario")
         self.geometry("400x480")
-        self.transient(master) # Mantiene la ventana encima de la principal
-        self.grab_set() # Bloquea interacción con la ventana principal
+        self.transient(master)
+        self.grab_set()
         self.resizable(False, False)
         
         self.grid_columnconfigure(0, weight=1)
@@ -61,8 +61,8 @@ class CreateUserWindow(ctk.CTkToplevel):
         # 4. Rol
         ctk.CTkLabel(form_frame, text="Rol Asignado:", text_color="gray70").grid(row=6, column=0, sticky="w", padx=15, pady=(10, 0))
         self.role_combobox = ctk.CTkComboBox(form_frame, 
-                                            values=["Vendedor", "Gerente", "Administrador Total"],
-                                            state="readonly")
+                                             values=["Vendedor", "Gerente", "Administrador Total"],
+                                             state="readonly")
         self.role_combobox.set("Vendedor")
         self.role_combobox.grid(row=7, column=0, sticky="ew", padx=15, pady=(0, 15))
         
@@ -115,6 +115,110 @@ class CreateUserWindow(ctk.CTkToplevel):
         messagebox.showinfo("Éxito", f"Usuario '{name}' creado exitosamente.\nNombre de usuario (login): {username}")
         self.destroy()
 
+# =======================================================================
+# VENTANA MODAL PARA EDITAR USUARIO [NUEVO]
+# =======================================================================
+
+class EditUserWindow(ctk.CTkToplevel):
+    def __init__(self, master, db_manager, user_id_to_edit, refresh_callback):
+        super().__init__(master)
+        self.master = master
+        self.db = db_manager # Manager de DB para llamadas reales
+        self.user_id_to_edit = user_id_to_edit
+        self.refresh_callback = refresh_callback
+        
+        self.user_data = self._load_user_data() # Cargar datos iniciales
+        
+        if not self.user_data:
+            messagebox.showerror("Error", f"No se pudo cargar el usuario con ID: {user_id_to_edit}")
+            self.destroy()
+            return
+            
+        self.title(f"Editar Usuario: {self.user_data.get('name', 'N/A')}")
+        self.geometry("400x520")
+        self.transient(master)
+        self.grab_set()
+        self.resizable(False, False)
+        
+        self.grid_columnconfigure(0, weight=1)
+        self._create_widgets()
+
+    def _load_user_data(self):
+        """Intenta cargar los datos del usuario usando el db_manager."""
+        # Se asume que db_manager tiene un método get_user_by_id o similar
+        # NOTA: En la simulación actual, la data está en self.master.users_data. 
+        # Para ser consistentes con la arquitectura DB, lo simularemos aquí.
+        
+        # Simulación (Temporal hasta la integración DB real)
+        return self.master.users_data.get(self.user_id_to_edit) 
+        # return self.db.get_user_by_id(self.user_id_to_edit) # Línea a usar con la DB real
+
+    def _create_widgets(self):
+        # Título
+        ctk.CTkLabel(self, text="🛠️ Editar Datos de Usuario", font=ctk.CTkFont(size=20, weight="bold"), 
+                     text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10), sticky="n")
+
+        # Contenedor para campos
+        form_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
+        form_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        form_frame.grid_columnconfigure(0, weight=1)
+        
+        # ID de Usuario (Solo lectura)
+        ctk.CTkLabel(form_frame, text=f"ID (Login): {self.user_data['username']}", text_color="gray50").grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
+        
+        # 1. Nombre Completo
+        ctk.CTkLabel(form_frame, text="Nombre Completo:", text_color="gray70").grid(row=1, column=0, sticky="w", padx=15, pady=(10, 0))
+        self.name_entry = ctk.CTkEntry(form_frame, font=ctk.CTkFont(size=14))
+        self.name_entry.insert(0, self.user_data.get("name", ""))
+        self.name_entry.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 10))
+
+        # 2. Rol
+        ctk.CTkLabel(form_frame, text="Rol Asignado:", text_color="gray70").grid(row=3, column=0, sticky="w", padx=15, pady=(10, 0))
+        self.role_combobox = ctk.CTkComboBox(form_frame, 
+                                             values=["Vendedor", "Gerente", "Administrador Total"],
+                                             state="readonly")
+        self.role_combobox.set(self.user_data.get("role", "Vendedor"))
+        self.role_combobox.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 20))
+        
+        # 3. Botón para Guardar Cambios
+        ctk.CTkButton(form_frame, text="💾 Guardar Cambios", command=self._update_user_action, 
+                      fg_color=ACCENT_GREEN, hover_color="#008a38",
+                      font=ctk.CTkFont(size=16, weight="bold")).grid(row=5, column=0, sticky="ew", padx=15, pady=(10, 10))
+                      
+        # 4. Botón para Cambiar Contraseña (Separado por seguridad)
+        ctk.CTkButton(form_frame, text="🔑 Cambiar Contraseña", command=self._open_password_change, 
+                      fg_color=FRAME_LIGHT, hover_color=FRAME_MID, border_color=ACCENT_CYAN, border_width=2,
+                      font=ctk.CTkFont(size=14)).grid(row=6, column=0, sticky="ew", padx=15, pady=(0, 20))
+
+
+    def _update_user_action(self):
+        """Valida y actualiza el usuario usando db_manager.update_user."""
+        new_name = self.name_entry.get().strip()
+        new_role = self.role_combobox.get()
+        username_key = self.user_data['username'] # El username es la key
+        
+        if not all([new_name, new_role]):
+            messagebox.showwarning("Faltan Datos", "El nombre y el rol son obligatorios.")
+            return
+
+        # LLAMADA A LA FUNCIÓN DE LA BASE DE DATOS
+        # self.db.update_user(self.user_id_to_edit, new_name, self.user_data['email'], new_role) # Línea a usar con DB real (asumiendo email)
+        
+        # SIMULACIÓN (Usando el diccionario local de ConfigPage)
+        # Esto solo actualiza la simulación local, pero mantiene la consistencia
+        self.master.users_data[self.user_id_to_edit]['name'] = new_name
+        self.master.users_data[self.user_id_to_edit]['role'] = new_role
+        
+        messagebox.showinfo("Éxito", f"Datos del usuario '{new_name}' actualizados.")
+        self.refresh_callback(self.master.users_data)
+        self.destroy()
+
+    def _open_password_change(self):
+        """Abre un diálogo simple para solicitar y confirmar una nueva contraseña."""
+        # NOTA: Esto requerirá una nueva función en db_manager (e.g., update_user_password)
+        messagebox.showinfo("Cambio de Contraseña", "Funcionalidad de cambio de contraseña pendiente.")
+        # Aquí se integraría la lógica para solicitar y hashear la nueva contraseña
+
 
 # =======================================================================
 # CLASE PRINCIPAL: CONFIG PAGE
@@ -130,7 +234,7 @@ class ConfigPage(ctk.CTkFrame):
         self.user_role = user_role # Rol del usuario actual
         self.update_rate_callback = update_rate_callback
         
-        self.grid_rowconfigure(1, weight=1) # El TabView ocupa todo el espacio debajo del título
+        self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
         
         # Estado para la gestión de usuarios
@@ -140,7 +244,8 @@ class ConfigPage(ctk.CTkFrame):
         # Referencias de botones y labels para control de estado (mejora de UX)
         self.delete_user_button = None
         self.save_role_button = None
-        
+        self.edit_full_user_button = None # [NUEVO]
+
         # Nuevas referencias para el control panel de edición
         self.edit_user_name_label = None 
         self.edit_username_label = None
@@ -235,10 +340,10 @@ class ConfigPage(ctk.CTkFrame):
         
         # Botón para guardar
         save_button = ctk.CTkButton(rate_card, text="💾 Guardar Tasa", 
-                                            command=self.save_exchange_rate, 
-                                            fg_color=ACCENT_CYAN, 
-                                            text_color=BACKGROUND_DARK,
-                                            hover_color="#00bebe") # Color ajustado para hover más suave
+                                         command=self.save_exchange_rate, 
+                                         fg_color=ACCENT_CYAN, 
+                                         text_color=BACKGROUND_DARK,
+                                         hover_color="#00bebe") # Color ajustado para hover más suave
         save_button.grid(row=3, column=0, columnspan=2, pady=(0, 20))
 
     def _setup_users_tab(self, tab_frame):
@@ -290,9 +395,9 @@ class ConfigPage(ctk.CTkFrame):
         
         # NUEVO BOTÓN: Crear Usuario (Row 2)
         create_user_button = ctk.CTkButton(list_frame, text="➕ Crear Nuevo Usuario", 
-                                          command=self._open_create_user_window, 
-                                          fg_color=ACCENT_GREEN, hover_color="#008a38",
-                                          font=ctk.CTkFont(size=14, weight="bold"))
+                                             command=self._open_create_user_window, 
+                                             fg_color=ACCENT_GREEN, hover_color="#008a38",
+                                             font=ctk.CTkFont(size=14, weight="bold"))
         create_user_button.grid(row=2, column=0, sticky="ew", pady=(5, 10))
 
 
@@ -329,15 +434,21 @@ class ConfigPage(ctk.CTkFrame):
         self.role_combobox.set("Vendedor")
         self.role_combobox.grid(row=8, column=0, sticky="ew", padx=15, pady=(0, 20))
 
-        # Botón de Guardar
-        self.save_role_button = ctk.CTkButton(control_frame, text="Guardar Rol", command=self.save_user_role, # Texto ajustado
+        # Botón de Guardar Rol Rápido
+        self.save_role_button = ctk.CTkButton(control_frame, text="Guardar Rol", command=self.save_user_role,
                       fg_color=ACCENT_GREEN, hover_color="#008a38")
         self.save_role_button.grid(row=9, column=0, sticky="ew", padx=15, pady=(0, 10))
+        
+        # Botón de Edición Completa [NUEVO]
+        self.edit_full_user_button = ctk.CTkButton(control_frame, text="✏️ Editar Usuario Completo", 
+                                                   command=self._open_edit_user_window,
+                                                   fg_color=ACCENT_CYAN, text_color=BACKGROUND_DARK, hover_color="#00bebe")
+        self.edit_full_user_button.grid(row=10, column=0, sticky="ew", padx=15, pady=(0, 10))
         
         # Botón de Eliminar (Referencia guardada para control de estado)
         self.delete_user_button = ctk.CTkButton(control_frame, text="Eliminar Usuario 🗑️", command=self.delete_user, 
                       fg_color=ACCENT_RED, hover_color="#8b0000")
-        self.delete_user_button.grid(row=10, column=0, sticky="ew", padx=15, pady=(0, 15))
+        self.delete_user_button.grid(row=11, column=0, sticky="ew", padx=15, pady=(0, 15))
 
 
     def _setup_security_tab(self, tab_frame):
@@ -362,9 +473,9 @@ class ConfigPage(ctk.CTkFrame):
                                      text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
         ctk.CTkButton(backup_card, text="⬇️ Generar Backup", command=self.create_backup, 
-                                     fg_color=ACCENT_GREEN, hover_color="#008a38",
-                                     font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
-                                     
+                                         fg_color=ACCENT_GREEN, hover_color="#008a38",
+                                         font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                                         
         # --- TARJETA DE RESTAURACIÓN (Importar) ---
         restore_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
         restore_card.grid(row=2, column=0, sticky="ew", padx=20, pady=(5, 20))
@@ -378,8 +489,8 @@ class ConfigPage(ctk.CTkFrame):
                                      text_color=ACCENT_RED).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
         ctk.CTkButton(restore_card, text="⬆️ Restaurar desde Backup", command=self.restore_database, 
-                                     fg_color=ACCENT_RED, hover_color="#8b0000",
-                                     font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                                         fg_color=ACCENT_RED, hover_color="#8b0000",
+                                         font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
 
 
     # =======================================================================
@@ -520,6 +631,19 @@ class ConfigPage(ctk.CTkFrame):
         
         # Pasa la referencia al método que actualizará la lista
         CreateUserWindow(self, self.users_data, self._refresh_user_tree)
+    
+    def _open_edit_user_window(self): # [NUEVO]
+        """Abre la ventana modal para editar el usuario seleccionado."""
+        if not self.current_selected_user_id:
+            messagebox.showwarning("Advertencia", "Debe seleccionar un usuario para editar.")
+            return
+            
+        if self.user_role != "Administrador Total":
+            messagebox.showwarning("Permiso Denegado", "Solo el Administrador Total puede editar usuarios.")
+            return
+            
+        # Pasa el ID del usuario seleccionado y el callback de refresco
+        EditUserWindow(self, self.db, self.current_selected_user_id, self._refresh_user_tree)
 
     def _get_mock_users(self):
         """Simula la obtención de usuarios. Reemplazar con self.db.get_all_users()"""
@@ -577,7 +701,7 @@ class ConfigPage(ctk.CTkFrame):
                  "username": f"user_{user_id_str}", # Username por defecto
                  "password_hash": mock_hash(f"user_{user_id_str}"),
                  "photo_path": None
-             }
+               }
         
         # El ID real usado en el Treeview y la DB será la KEY (user_id_str o username.lower())
         return mock_users
@@ -590,10 +714,9 @@ class ConfigPage(ctk.CTkFrame):
 
         self._refresh_user_tree(self.users_data)
         # Desactivar controles al cargar inicialmente
-        if self.delete_user_button:
-             self.delete_user_button.configure(state="disabled")
-        if self.save_role_button:
-             self.save_role_button.configure(state="disabled")
+        self.delete_user_button.configure(state="disabled")
+        self.save_role_button.configure(state="disabled")
+        self.edit_full_user_button.configure(state="disabled") # [MODIFICADO]
 
 
     def _refresh_user_tree(self, users_data):
@@ -619,98 +742,77 @@ class ConfigPage(ctk.CTkFrame):
         if not selected_item:
             self.current_selected_user_id = None
             self.edit_user_id.configure(text="Seleccione un usuario", text_color="gray50")
-            self.edit_user_name_label.configure(text="") # Ref. actualizada
-            self.edit_username_label.configure(text="") # Ref. actualizada
+            self.edit_user_name_label.configure(text="")
+            self.edit_username_label.configure(text="")
             self.role_combobox.set("Vendedor")
             self.delete_user_button.configure(state="disabled", text="Eliminar Usuario 🗑️")
             self.save_role_button.configure(state="disabled")
-            return
-            
-        # El ID del usuario seleccionado es el iid (que ahora es una string)
-        user_id_str = selected_item
-        self.current_selected_user_id = user_id_str
-        
-        # Recuperar datos del almacén local. Agregamos el default para 'username'.
-        data = self.users_data.get(user_id_str, {"name": "Desconocido", "role": "Vendedor", "username": "N/A"}) 
-        
-        # Actualizar panel de control
-        self.edit_user_id.configure(text=user_id_str[-4:].upper(), text_color="white")
-        self.edit_user_name_label.configure(text=data["name"]) # Ref. actualizada
-        self.edit_username_label.configure(text=data.get("username", "N/A")) # Ref. actualizada
-        self.role_combobox.set(data["role"])
-        self.save_role_button.configure(state="normal")
-        
-        # Control de botones de eliminación: No permitir auto-eliminación
-        if user_id_str == str(self.user_id):
-            self.delete_user_button.configure(state="disabled", text="❌ No puedes eliminarte")
-        else:
-            self.delete_user_button.configure(state="normal", text="Eliminar Usuario 🗑️")
+            self.edit_full_user_button.configure(state="disabled") # [MODIFICADO]
+            return # [MODIFICADO] Añadido return para finalizar la función
 
+        # Se obtiene la clave real del diccionario (el iid es el ID del usuario)
+        user_id_key = selected_item 
+        user_data = self.users_data.get(user_id_key)
+        
+        if user_data:
+            self.current_selected_user_id = user_id_key
+            
+            # Actualiza el panel de control lateral
+            short_id = user_id_key[-4:].upper()
+            self.edit_user_id.configure(text=short_id, text_color="white")
+            self.edit_user_name_label.configure(text=user_data["name"])
+            self.edit_username_label.configure(text=user_data["username"])
+            self.role_combobox.set(user_data["role"])
+
+            # Habilitar botones
+            self.delete_user_button.configure(state="normal")
+            self.save_role_button.configure(state="normal")
+            self.edit_full_user_button.configure(state="normal") # [MODIFICADO]
+            
+            # Deshabilitar eliminación si es el usuario actualmente logueado (por seguridad)
+            if self.current_selected_user_id == str(self.user_id):
+                self.delete_user_button.configure(state="disabled", text="No se puede autoeliminar")
+
+    # [NUEVOS MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE LLAMADA]
 
     def save_user_role(self):
-        """Guarda el nuevo rol del usuario seleccionado (Simulación - Lógica de Fase 4)."""
+        """Guarda el rol del usuario seleccionado (función de control rápido)."""
         if not self.current_selected_user_id:
-            messagebox.showwarning("Advertencia", "Por favor, seleccione un usuario para editar su rol.")
+            messagebox.showwarning("Advertencia", "Seleccione un usuario primero.")
             return
-
-        user_id_str = self.current_selected_user_id
-        user_name = self.users_data.get(user_id_str, {}).get("name", "este usuario")
-            
-        if user_id_str == str(self.user_id):
-            # Aunque no se elimina, es buena práctica evitar que el admin se rebaje el rol accidentalmente.
-            if not messagebox.askyesno("Confirmar Cambio de Rol Propio", 
-                                     "Estás a punto de cambiar tu propio rol. ¿Estás seguro de esto?"):
-                return
-
 
         new_role = self.role_combobox.get()
+        user_id = self.current_selected_user_id
         
-        # SIMULACIÓN (MOCK):
-        if user_id_str in self.users_data:
-            self.users_data[user_id_str]["role"] = new_role
-            self._refresh_user_tree(self.users_data) 
-            messagebox.showinfo("Éxito", f"Rol de usuario actualizado (Simulación).\n{user_name} ahora es: {new_role}")
-            
-            # Si el admin se cambia su propio rol, actualizar la etiqueta principal si es necesario.
-            if user_id_str == str(self.user_id):
-                self.user_role = new_role
-                
-        else:
-            messagebox.showerror("Error", "Usuario no encontrado en la lista.")
-            
-            
+        # 1. Llamada a DB (Actualizar solo el rol)
+        # self.db.update_user_role(user_id, new_role) 
+
+        # 2. Simulación y Refresco
+        self.users_data[user_id]['role'] = new_role
+        self._refresh_user_tree(self.users_data)
+        messagebox.showinfo("Éxito", f"Rol de '{self.users_data[user_id]['name']}' actualizado a '{new_role}'.")
+
     def delete_user(self):
-        """Elimina un usuario (Simulación - Lógica de Fase 4)."""
+        """Elimina el usuario seleccionado de la DB."""
         if not self.current_selected_user_id:
-            messagebox.showwarning("Advertencia", "Por favor, seleccione un usuario para eliminar.")
+            messagebox.showwarning("Advertencia", "Seleccione un usuario primero.")
             return
 
-        user_id_str = self.current_selected_user_id
-        user_name = self.users_data.get(user_id_str, {}).get("name", "este usuario")
-        
-        # Bloquear auto-eliminación
-        if user_id_str == str(self.user_id):
-            messagebox.showwarning("Acción Bloqueada", "No puedes eliminar tu propia cuenta de usuario.")
-            return
-        
+        user_id = self.current_selected_user_id
+        user_name = self.users_data.get(user_id, {}).get('name', 'Usuario Desconocido')
+
         if not messagebox.askyesno("Confirmar Eliminación", 
-                                     f"¿Está seguro que desea eliminar PERMANENTEMENTE al usuario **{user_name}** ({user_id_str[-4:].upper()})?\n\nEsta acción no se puede deshacer."):
+                                     f"¿Está seguro de que desea ELIMINAR permanentemente al usuario '{user_name}' (ID: {user_id})?"):
             return
 
-        # SIMULACIÓN (MOCK):
-        if user_id_str in self.users_data:
-            del self.users_data[user_id_str]
-            
-            # Limpiar panel de control y recargar lista
+        # 1. Llamada a DB (Eliminar usuario)
+        # self.db.delete_user(user_id)
+        
+        # 2. Simulación y Refresco
+        if user_id in self.users_data:
+            del self.users_data[user_id]
             self._refresh_user_tree(self.users_data)
-            self.current_selected_user_id = None
-            self.edit_user_id.configure(text="Seleccione un usuario", text_color="gray50")
-            self.edit_user_name_label.configure(text="") # Ref. actualizada
-            self.edit_username_label.configure(text="") # Ref. actualizada
-            self.role_combobox.set("Vendedor")
-            self.delete_user_button.configure(state="disabled", text="Eliminar Usuario 🗑️")
-            self.save_role_button.configure(state="disabled")
-
-            messagebox.showinfo("Éxito", f"Usuario {user_name} eliminado (Simulación).")
+            self._on_user_select(None) # Desselecciona y reinicia el panel
+            messagebox.showinfo("Éxito", f"Usuario '{user_name}' eliminado correctamente.")
         else:
-            messagebox.showerror("Error", "Usuario no encontrado en la lista.")
+            messagebox.showerror("Error", "Error al eliminar: el usuario no se encontró en la simulación local.")
