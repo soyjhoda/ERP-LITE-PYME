@@ -2,7 +2,7 @@ import customtkinter as ctk
 from tkinter import messagebox, ttk, filedialog
 from datetime import datetime
 from .utils import is_valid_float
-import hashlib # NUEVO: Para simular el hash de contraseñas
+import hashlib 
 
 # Definiciones de estilo
 ACCENT_CYAN = "#00FFFF"
@@ -93,7 +93,8 @@ class CreateUserWindow(ctk.CTkToplevel):
              return
         
         # Generar un ID (Usamos el username como ID/Key en la simulación para mayor consistencia)
-        new_user_id = username
+        # NOTA: En la DB real, el ID es INTEGER AUTOINCREMENT. Aquí usamos el username temporalmente.
+        new_user_id = username 
         
         # Generar hash de la contraseña (simulación)
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
@@ -109,11 +110,93 @@ class CreateUserWindow(ctk.CTkToplevel):
         
         # Añadir a la simulación local
         self.users_data[new_user_id] = new_user_data
+        
+        # Lógica DB: self.master.db.create_user(username, password, name, role) 
 
         # Actualizar el Treeview principal y cerrar
         self.refresh_callback(self.users_data)
         messagebox.showinfo("Éxito", f"Usuario '{name}' creado exitosamente.\nNombre de usuario (login): {username}")
         self.destroy()
+
+# =======================================================================
+# NUEVA VENTANA MODAL PARA CAMBIAR CONTRASEÑA
+# =======================================================================
+
+class ChangePasswordWindow(ctk.CTkToplevel):
+    def __init__(self, master, db_manager, user_id_to_edit, username_to_edit):
+        super().__init__(master)
+        self.db = db_manager
+        self.user_id = user_id_to_edit # ID del usuario en la DB (clave para el UPDATE)
+        self.username = username_to_edit
+        
+        self.title(f"Cambiar Contraseña: {self.username}")
+        self.geometry("350x300")
+        self.transient(master)
+        self.grab_set()
+        self.resizable(False, False)
+        
+        self.grid_columnconfigure(0, weight=1)
+        self._create_widgets()
+
+    def _create_widgets(self):
+        # Título
+        ctk.CTkLabel(self, text="🔑 Nueva Contraseña", font=ctk.CTkFont(size=20, weight="bold"), 
+                     text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10), sticky="n")
+
+        # Contenedor para campos
+        form_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
+        form_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        form_frame.grid_columnconfigure(0, weight=1)
+        
+        # 1. Nueva Contraseña
+        ctk.CTkLabel(form_frame, text="Nueva Contraseña:", text_color="gray70").grid(row=0, column=0, sticky="w", padx=15, pady=(15, 0))
+        self.new_password_entry = ctk.CTkEntry(form_frame, placeholder_text="Mínimo 6 caracteres", show="*", font=ctk.CTkFont(size=14))
+        self.new_password_entry.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+
+        # 2. Confirmar Contraseña
+        ctk.CTkLabel(form_frame, text="Confirmar Contraseña:", text_color="gray70").grid(row=2, column=0, sticky="w", padx=15, pady=(10, 0))
+        self.confirm_password_entry = ctk.CTkEntry(form_frame, placeholder_text="Repita la contraseña", show="*", font=ctk.CTkFont(size=14))
+        self.confirm_password_entry.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 15))
+        
+        # 3. Botón de Actualizar
+        ctk.CTkButton(self, text="✅ Actualizar Contraseña", command=self._change_password_action, 
+                      fg_color=ACCENT_GREEN, text_color=BACKGROUND_DARK, hover_color="#008a38",
+                      font=ctk.CTkFont(size=16, weight="bold")).grid(row=2, column=0, sticky="ew", padx=20, pady=(10, 20))
+
+    def _change_password_action(self):
+        """Valida y actualiza la contraseña del usuario en la base de datos."""
+        new_password = self.new_password_entry.get()
+        confirm_password = self.confirm_password_entry.get()
+        
+        if not new_password or not confirm_password:
+            messagebox.showwarning("Faltan Datos", "Debe completar ambos campos de contraseña.")
+            return
+
+        if len(new_password) < 6:
+            messagebox.showwarning("Contraseña Débil", "La contraseña debe tener al menos 6 caracteres.")
+            return
+            
+        if new_password != confirm_password:
+            messagebox.showerror("Error", "Las contraseñas no coinciden.")
+            return
+
+        try:
+            # LLAMADA AL DB_MANAGER REAL
+            # Esta función hashea la contraseña internamente antes de guardarla.
+            success = self.db.update_user_password(self.user_id, new_password)
+            
+            if success:
+                # SIMULACIÓN DE ACTUALIZACIÓN LOCAL (Para consistencia en la vista)
+                # NOTA: En la simulación anterior usábamos el diccionario users_data del master.
+                # Aquí no es necesario actualizar la UI principal, solo el hash en la "DB" (db_manager).
+                
+                messagebox.showinfo("Éxito", f"Contraseña de '{self.username}' actualizada exitosamente.")
+                self.destroy()
+            else:
+                messagebox.showerror("Error", "No se pudo actualizar la contraseña. Verifique la conexión a la base de datos.")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error inesperado al actualizar la contraseña: {e}")
 
 # =======================================================================
 # VENTANA MODAL PARA EDITAR USUARIO [NUEVO]
@@ -145,11 +228,7 @@ class EditUserWindow(ctk.CTkToplevel):
 
     def _load_user_data(self):
         """Intenta cargar los datos del usuario usando el db_manager."""
-        # Se asume que db_manager tiene un método get_user_by_id o similar
-        # NOTA: En la simulación actual, la data está en self.master.users_data. 
-        # Para ser consistentes con la arquitectura DB, lo simularemos aquí.
-        
-        # Simulación (Temporal hasta la integración DB real)
+        # SIMULACIÓN (Usando el diccionario local de ConfigPage)
         return self.master.users_data.get(self.user_id_to_edit) 
         # return self.db.get_user_by_id(self.user_id_to_edit) # Línea a usar con la DB real
 
@@ -192,32 +271,39 @@ class EditUserWindow(ctk.CTkToplevel):
 
 
     def _update_user_action(self):
-        """Valida y actualiza el usuario usando db_manager.update_user."""
+        """Valida y actualiza el usuario usando db_manager.update_user_details."""
         new_name = self.name_entry.get().strip()
         new_role = self.role_combobox.get()
-        username_key = self.user_data['username'] # El username es la key
+        user_id_key = self.user_id_to_edit # El ID/Key usado en la simulación
         
         if not all([new_name, new_role]):
             messagebox.showwarning("Faltan Datos", "El nombre y el rol son obligatorios.")
             return
 
         # LLAMADA A LA FUNCIÓN DE LA BASE DE DATOS
-        # self.db.update_user(self.user_id_to_edit, new_name, self.user_data['email'], new_role) # Línea a usar con DB real (asumiendo email)
+        # Aquí se debería llamar a db_manager.update_user_details
+        # Se asume que el user_id_to_edit es el ID numérico de la DB, 
+        # aunque en el mock es el username. Usaremos el username (key) como referencia.
         
-        # SIMULACIÓN (Usando el diccionario local de ConfigPage)
-        # Esto solo actualiza la simulación local, pero mantiene la consistencia
-        self.master.users_data[self.user_id_to_edit]['name'] = new_name
-        self.master.users_data[self.user_id_to_edit]['role'] = new_role
+        # Simulación:
+        self.master.users_data[user_id_key]['name'] = new_name
+        self.master.users_data[user_id_key]['role'] = new_role
         
+        # Lógica DB: self.db.update_user_details(self.user_id_to_edit, ..., new_name, new_role, ...)
+
         messagebox.showinfo("Éxito", f"Datos del usuario '{new_name}' actualizados.")
         self.refresh_callback(self.master.users_data)
         self.destroy()
 
     def _open_password_change(self):
-        """Abre un diálogo simple para solicitar y confirmar una nueva contraseña."""
-        # NOTA: Esto requerirá una nueva función en db_manager (e.g., update_user_password)
-        messagebox.showinfo("Cambio de Contraseña", "Funcionalidad de cambio de contraseña pendiente.")
-        # Aquí se integraría la lógica para solicitar y hashear la nueva contraseña
+        """Abre la ventana modal para solicitar y confirmar una nueva contraseña."""
+        # Abrir la nueva ventana modal
+        ChangePasswordWindow(
+            self.master, 
+            self.db, 
+            self.user_id_to_edit, # ID del usuario a editar
+            self.user_data.get('username') # Username para mostrar en el título
+        )
 
 
 # =======================================================================
@@ -244,9 +330,9 @@ class ConfigPage(ctk.CTkFrame):
         # Referencias de botones y labels para control de estado (mejora de UX)
         self.delete_user_button = None
         self.save_role_button = None
-        self.edit_full_user_button = None # [NUEVO]
+        self.edit_full_user_button = None 
 
-        # Nuevas referencias para el control panel de edición
+        # Referencias para el control panel de edición
         self.edit_user_name_label = None 
         self.edit_username_label = None
 
@@ -297,7 +383,6 @@ class ConfigPage(ctk.CTkFrame):
             self._setup_users_tab(self.tabview.tab("Gestión de Usuarios"))
             self.load_users_data() # Cargar datos iniciales/reales de usuarios
         else:
-            # En un entorno de producción, esto sería un log, pero se mantiene para desarrollo.
             print(f"Usuario {self.user_role} no tiene acceso a la gestión de usuarios.") 
         
         # --- Pestaña 3: Herramientas y Seguridad ---
@@ -340,10 +425,10 @@ class ConfigPage(ctk.CTkFrame):
         
         # Botón para guardar
         save_button = ctk.CTkButton(rate_card, text="💾 Guardar Tasa", 
-                                         command=self.save_exchange_rate, 
-                                         fg_color=ACCENT_CYAN, 
-                                         text_color=BACKGROUND_DARK,
-                                         hover_color="#00bebe") # Color ajustado para hover más suave
+                                             command=self.save_exchange_rate, 
+                                             fg_color=ACCENT_CYAN, 
+                                             text_color=BACKGROUND_DARK,
+                                             hover_color="#00bebe")
         save_button.grid(row=3, column=0, columnspan=2, pady=(0, 20))
 
     def _setup_users_tab(self, tab_frame):
@@ -400,7 +485,6 @@ class ConfigPage(ctk.CTkFrame):
                                              font=ctk.CTkFont(size=14, weight="bold"))
         create_user_button.grid(row=2, column=0, sticky="ew", pady=(5, 10))
 
-
         # --- Sub-sección Derecha: Controles de Edición ---
         control_frame = ctk.CTkFrame(main_container, fg_color=FRAME_MID, corner_radius=8)
         control_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 15), pady=15)
@@ -436,18 +520,18 @@ class ConfigPage(ctk.CTkFrame):
 
         # Botón de Guardar Rol Rápido
         self.save_role_button = ctk.CTkButton(control_frame, text="Guardar Rol", command=self.save_user_role,
-                      fg_color=ACCENT_GREEN, hover_color="#008a38")
+                             fg_color=ACCENT_GREEN, hover_color="#008a38")
         self.save_role_button.grid(row=9, column=0, sticky="ew", padx=15, pady=(0, 10))
         
         # Botón de Edición Completa [NUEVO]
         self.edit_full_user_button = ctk.CTkButton(control_frame, text="✏️ Editar Usuario Completo", 
-                                                   command=self._open_edit_user_window,
-                                                   fg_color=ACCENT_CYAN, text_color=BACKGROUND_DARK, hover_color="#00bebe")
+                                                     command=self._open_edit_user_window,
+                                                     fg_color=ACCENT_CYAN, text_color=BACKGROUND_DARK, hover_color="#00bebe")
         self.edit_full_user_button.grid(row=10, column=0, sticky="ew", padx=15, pady=(0, 10))
         
         # Botón de Eliminar (Referencia guardada para control de estado)
         self.delete_user_button = ctk.CTkButton(control_frame, text="Eliminar Usuario 🗑️", command=self.delete_user, 
-                      fg_color=ACCENT_RED, hover_color="#8b0000")
+                             fg_color=ACCENT_RED, hover_color="#8b0000")
         self.delete_user_button.grid(row=11, column=0, sticky="ew", padx=15, pady=(0, 15))
 
 
@@ -473,9 +557,9 @@ class ConfigPage(ctk.CTkFrame):
                                      text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
         ctk.CTkButton(backup_card, text="⬇️ Generar Backup", command=self.create_backup, 
-                                         fg_color=ACCENT_GREEN, hover_color="#008a38",
-                                         font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
-                                         
+                                             fg_color=ACCENT_GREEN, hover_color="#008a38",
+                                             font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                                             
         # --- TARJETA DE RESTAURACIÓN (Importar) ---
         restore_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
         restore_card.grid(row=2, column=0, sticky="ew", padx=20, pady=(5, 20))
@@ -489,12 +573,12 @@ class ConfigPage(ctk.CTkFrame):
                                      text_color=ACCENT_RED).grid(row=1, column=0, sticky="w", padx=20, pady=(0, 10))
         
         ctk.CTkButton(restore_card, text="⬆️ Restaurar desde Backup", command=self.restore_database, 
-                                         fg_color=ACCENT_RED, hover_color="#8b0000",
-                                         font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+                                             fg_color=ACCENT_RED, hover_color="#8b0000",
+                                             font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
 
 
     # =======================================================================
-    # LÓGICA DE FUNCIONALIDADES - TASA DE CAMBIO (No modificada)
+    # LÓGICA DE FUNCIONALIDADES - TASA DE CAMBIO 
     # =======================================================================
     
     def load_current_rate(self):
@@ -533,8 +617,6 @@ class ConfigPage(ctk.CTkFrame):
                 messagebox.showerror("Error de Valor", "La tasa de cambio debe ser mayor a cero.")
                 return
 
-            # Lógica de DB real (Fase 4): self.db.set_exchange_rate(new_rate_float)
-            
             self.db.set_exchange_rate(new_rate_float)
             
             self.current_rate_label.configure(text=f"Bs. {new_rate_float:,.2f}", text_color=ACCENT_GREEN)
@@ -549,7 +631,7 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showerror("Error al Guardar", f"Ocurrió un error al guardar la tasa: {e}")
             
     # =======================================================================
-    # LÓGICA DE FUNCIONALIDADES - BACKUP Y RESTAURACIÓN (No modificada)
+    # LÓGICA DE FUNCIONALIDADES - BACKUP Y RESTAURACIÓN 
     # =======================================================================
 
     def create_backup(self):
@@ -620,7 +702,7 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante la restauración: {e}")
 
     # =======================================================================
-    # LÓGICA DE FUNCIONALIDADES - GESTIÓN DE USUARIOS (MEJORADA)
+    # LÓGICA DE FUNCIONALIDADES - GESTIÓN DE USUARIOS
     # =======================================================================
     
     def _open_create_user_window(self):
@@ -632,7 +714,7 @@ class ConfigPage(ctk.CTkFrame):
         # Pasa la referencia al método que actualizará la lista
         CreateUserWindow(self, self.users_data, self._refresh_user_tree)
     
-    def _open_edit_user_window(self): # [NUEVO]
+    def _open_edit_user_window(self):
         """Abre la ventana modal para editar el usuario seleccionado."""
         if not self.current_selected_user_id:
             messagebox.showwarning("Advertencia", "Debe seleccionar un usuario para editar.")
@@ -642,25 +724,22 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showwarning("Permiso Denegado", "Solo el Administrador Total puede editar usuarios.")
             return
             
-        # Pasa el ID del usuario seleccionado y el callback de refresco
+        # Pasa el ID del usuario seleccionado, el db_manager y el callback de refresco
         EditUserWindow(self, self.db, self.current_selected_user_id, self._refresh_user_tree)
 
     def _get_mock_users(self):
         """Simula la obtención de usuarios. Reemplazar con self.db.get_all_users()"""
+        # (Lógica de mock mantenida exactamente igual para asegurar la simulación)
         user_id_str = str(self.user_id) 
         
-        # Generar un hash de ejemplo para las contraseñas mock
         def mock_hash(password_prefix):
             return hashlib.sha256(f"pass_{password_prefix}".encode()).hexdigest()
         
         mock_users = {
-            # Usamos el username (minúsculas) como ID principal en la simulación para mayor consistencia en la edición/creación.
-            # El ID real del usuario logueado es una excepción que se mantiene por seguridad
-            
             user_id_str: {
                 "name": "Admin Logueado", 
                 "role": self.user_role, 
-                "username": "admin_log", # Usuario para el login simulado
+                "username": "admin_log", 
                 "password_hash": mock_hash("admin_log"), 
                 "photo_path": None
             },
@@ -693,30 +772,28 @@ class ConfigPage(ctk.CTkFrame):
                 "photo_path": None
             },
         }
-        # Asegurarse de que el usuario logueado tenga su entrada correcta (en caso de que su ID no sea una clave legible)
         if user_id_str not in mock_users:
              mock_users[user_id_str] = {
                  "name": f"Usuario {user_id_str[-4:].upper()}", 
                  "role": self.user_role, 
-                 "username": f"user_{user_id_str}", # Username por defecto
+                 "username": f"user_{user_id_str}", 
                  "password_hash": mock_hash(f"user_{user_id_str}"),
                  "photo_path": None
-               }
-        
-        # El ID real usado en el Treeview y la DB será la KEY (user_id_str o username.lower())
+                }
         return mock_users
 
     def load_users_data(self):
         """Carga los datos de usuarios (simulados o reales) y actualiza la UI."""
         
         # SIMULACIÓN (MOCK):
+        # En una integración real, aquí llamarías: self.users_data = self.db.get_all_users()
         self.users_data = self._get_mock_users() 
 
         self._refresh_user_tree(self.users_data)
         # Desactivar controles al cargar inicialmente
         self.delete_user_button.configure(state="disabled")
         self.save_role_button.configure(state="disabled")
-        self.edit_full_user_button.configure(state="disabled") # [MODIFICADO]
+        self.edit_full_user_button.configure(state="disabled")
 
 
     def _refresh_user_tree(self, users_data):
@@ -747,8 +824,8 @@ class ConfigPage(ctk.CTkFrame):
             self.role_combobox.set("Vendedor")
             self.delete_user_button.configure(state="disabled", text="Eliminar Usuario 🗑️")
             self.save_role_button.configure(state="disabled")
-            self.edit_full_user_button.configure(state="disabled") # [MODIFICADO]
-            return # [MODIFICADO] Añadido return para finalizar la función
+            self.edit_full_user_button.configure(state="disabled") 
+            return 
 
         # Se obtiene la clave real del diccionario (el iid es el ID del usuario)
         user_id_key = selected_item 
@@ -767,13 +844,13 @@ class ConfigPage(ctk.CTkFrame):
             # Habilitar botones
             self.delete_user_button.configure(state="normal")
             self.save_role_button.configure(state="normal")
-            self.edit_full_user_button.configure(state="normal") # [MODIFICADO]
+            self.edit_full_user_button.configure(state="normal") 
             
             # Deshabilitar eliminación si es el usuario actualmente logueado (por seguridad)
             if self.current_selected_user_id == str(self.user_id):
                 self.delete_user_button.configure(state="disabled", text="No se puede autoeliminar")
 
-    # [NUEVOS MÉTODOS AÑADIDOS PARA EVITAR ERRORES DE LLAMADA]
+    # [MÉTODOS FINALES MANTENIDOS]
 
     def save_user_role(self):
         """Guarda el rol del usuario seleccionado (función de control rápido)."""
@@ -785,6 +862,7 @@ class ConfigPage(ctk.CTkFrame):
         user_id = self.current_selected_user_id
         
         # 1. Llamada a DB (Actualizar solo el rol)
+        # En la DB real, user_id debe ser el ID numérico
         # self.db.update_user_role(user_id, new_role) 
 
         # 2. Simulación y Refresco

@@ -281,7 +281,10 @@ class DatabaseManager:
         return self.execute_query(sql, (username, full_name, role, foto_path, user_id))
 
     def update_user_password(self, user_id, new_password):
-        """Actualiza la contraseña de un usuario (hasheada)."""
+        """
+        [MÉTODO CLAVE PARA EL CAMBIO DE CONTRASEÑA]
+        Actualiza la contraseña de un usuario (hasheada).
+        """
         hashed_pw = hash_password(new_password)
         return self.execute_query("UPDATE usuarios SET password = ? WHERE id = ?", (hashed_pw, user_id))
 
