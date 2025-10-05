@@ -17,39 +17,35 @@ class SalesReportPage(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         
         self._create_widgets()
+        
+        # Vincular doble clic para mostrar detalles
+        self.sales_tree.bind("<Double-1>", self.on_sale_double_click)
 
 
     def _create_widgets(self):
-        # Título
         ctk.CTkLabel(self, text="📊 Reportes y Análisis de Ventas", 
                      font=ctk.CTkFont(size=20, weight="bold"), text_color="#00FFFF").grid(row=0, column=0, sticky="w", padx=20, pady=10)
         
-        # Frame filtros
         filter_frame = ctk.CTkFrame(self, fg_color="#1B263B", corner_radius=10)
         filter_frame.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 10))
         filter_frame.grid_columnconfigure((0,1,2,3,4,5), weight=1)
         
-        # Desde Fecha
         ctk.CTkLabel(filter_frame, text="Desde:", text_color="#00FFFF").grid(row=0, column=0, sticky="w", padx=10, pady=10)
         self.start_date_entry = ctk.CTkEntry(filter_frame, placeholder_text="YYYY-MM-DD")
         self.start_date_entry.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
         
-        # Hasta Fecha
         ctk.CTkLabel(filter_frame, text="Hasta:", text_color="#00FFFF").grid(row=0, column=2, sticky="w", padx=10, pady=10)
         self.end_date_entry = ctk.CTkEntry(filter_frame, placeholder_text="YYYY-MM-DD")
         self.end_date_entry.grid(row=0, column=3, sticky="ew", padx=10, pady=10)
         
-        # Vendedor
         ctk.CTkLabel(filter_frame, text="Vendedor:", text_color="#00FFFF").grid(row=0, column=4, sticky="w", padx=10, pady=10)
         self.seller_combobox = ctk.CTkComboBox(filter_frame, state="readonly")
         self.seller_combobox.grid(row=0, column=5, sticky="ew", padx=10, pady=10)
         self._load_sellers()
         
-        # Botón Buscar
         search_button = ctk.CTkButton(filter_frame, text="🔍 Buscar", command=self.load_report)
         search_button.grid(row=0, column=6, sticky="ew", padx=10, pady=10)
         
-        # Tabla ventas
         self.sales_tree = ttk.Treeview(self, columns=("id", "date", "seller", "total_bs", "total_usd"), show="headings")
         self.sales_tree.heading("id", text="ID Venta")
         self.sales_tree.heading("date", text="Fecha")
@@ -63,16 +59,13 @@ class SalesReportPage(ctk.CTkFrame):
         self.sales_tree.column("total_usd", width=100, anchor="e")
         self.sales_tree.grid(row=2, column=0, sticky="nsew", padx=20, pady=10)
         
-        # Scroll para tabla
         scrollbar = ctk.CTkScrollbar(self, command=self.sales_tree.yview)
         scrollbar.grid(row=2, column=1, sticky="ns", pady=10)
         self.sales_tree.configure(yscrollcommand=scrollbar.set)
         
-        # Botón Exportar
         export_button = ctk.CTkButton(self, text="📁 Exportar CSV", command=self.export_csv)
         export_button.grid(row=3, column=0, sticky="e", padx=20, pady=10)
         
-        # Gráfica
         self.fig, self.ax = plt.subplots(figsize=(8, 3), dpi=100)
         self.fig.patch.set_facecolor("#0D1B2A")
         self.ax.set_facecolor("#1B263B")
@@ -83,7 +76,6 @@ class SalesReportPage(ctk.CTkFrame):
 
 
     def _load_sellers(self):
-        # Cargar vendedores desde la DB para filtro
         sellers = self.db.fetch_all("SELECT DISTINCT nombre_completo FROM usuarios WHERE rol IN ('Vendedor', 'Gerente', 'Administrador Total')")
         seller_names = [row[0] for row in sellers] if sellers else []
         self.seller_combobox.configure(values=["Todos"] + seller_names)
@@ -91,12 +83,10 @@ class SalesReportPage(ctk.CTkFrame):
 
 
     def load_report(self):
-        # Obtener filtros
         start_date = self.start_date_entry.get().strip()
         end_date = self.end_date_entry.get().strip()
         seller = self.seller_combobox.get()
         
-        # Validaciones simples de fecha
         try:
             if start_date:
                 datetime.strptime(start_date, "%Y-%m-%d")
@@ -106,7 +96,6 @@ class SalesReportPage(ctk.CTkFrame):
             messagebox.showerror("Error", "Fecha inválida, debe ser formato YYYY-MM-DD")
             return
         
-        # Consulta base corregida: user_id en lugar de usuario_id
         query = "SELECT ventas.id, ventas.fecha, usuarios.nombre_completo, ventas.total_bs, ventas.total_usd FROM ventas JOIN usuarios ON ventas.user_id = usuarios.id WHERE 1=1"
         params = []
         
@@ -124,17 +113,47 @@ class SalesReportPage(ctk.CTkFrame):
         
         results = self.db.fetch_all(query, tuple(params))
         
-        # Limpiar tabla
         for i in self.sales_tree.get_children():
             self.sales_tree.delete(i)
         
-        # Insertar datos desempaquetando sqlite3.Row a lista
         for row in results:
             values = [row[col] for col in row.keys()]
             self.sales_tree.insert("", "end", values=values)
         
-        # Actualizar gráfica
         self.update_chart(results)
+
+
+    def on_sale_double_click(self, event):
+        selected_item = self.sales_tree.focus()
+        if not selected_item:
+            return
+        values = self.sales_tree.item(selected_item, "values")
+        venta_id = values[0]  # ID de venta está en la primera columna
+        self.show_sale_details(venta_id)
+
+
+    def show_sale_details(self, venta_id):
+        details_window = ctk.CTkToplevel(self)
+        details_window.title(f"Detalles de la Venta #{venta_id}")
+        details_window.geometry("700x400")
+        
+        columns = ("producto", "cantidad", "precio_unitario_usd", "precio_unitario_bs", "subtotal_usd", "subtotal_bs")
+        tree = ttk.Treeview(details_window, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col.replace("_", " ").title())
+            tree.column(col, width=100, anchor="center")
+
+        tree.pack(expand=True, fill="both", padx=10, pady=10)
+        
+        query = """
+            SELECT nombre_producto, cantidad, precio_unitario_usd, precio_unitario_bs, subtotal_usd, subtotal_bs
+            FROM detalles_venta WHERE venta_id = ?
+        """
+        rows = self.db.fetch_all(query, (venta_id,))
+        
+        for r in rows:
+            values = list(r)
+            tree.insert("", "end", values=values)
 
 
     def update_chart(self, data):
@@ -144,18 +163,14 @@ class SalesReportPage(ctk.CTkFrame):
         self.ax.tick_params(axis='y', colors='white')
         self.ax.set_title("Ventas por Fecha", color="white")
 
-
-        # Contar ventas por fecha
         date_totals = {}
         for row in data:
-            date_str = row['fecha'][:10]  # Extraer fecha YYYY-MM-DD usando clave en vez de índice
+            date_str = row['fecha'][:10]
             total_bs = row['total_bs']
             date_totals[date_str] = date_totals.get(date_str, 0) + total_bs
 
-
         dates = sorted(date_totals.keys())
         totals = [date_totals[d] for d in dates]
-
 
         self.ax.bar(dates, totals, color="#00FFFF")
         self.ax.tick_params(axis='x', rotation=45)
