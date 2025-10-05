@@ -2,12 +2,14 @@ import customtkinter as ctk
 from tkinter import messagebox, ttk, simpledialog, Menu
 import math
 
+
 # Definición de colores
 ACCENT_CYAN = "#00FFFF"
 ACCENT_GREEN = "#00c853"
 BACKGROUND_DARK = "#0D1B2A" 
 FRAME_MID = "#1B263B"
 FRAME_DARK = "#1B263B"
+
 
 class PosPage(ctk.CTkFrame):
     """Clase para la página de Punto de Venta (POS)."""
@@ -40,17 +42,18 @@ class PosPage(ctk.CTkFrame):
         style.layout("Cart.Treeview", [('Treeview.treearea', {'sticky': 'nswe'})]) 
         
         # Inicialización de product_tree para evitar el error 'self.product_tree' no definido
-        # Debe estar aquí, antes de que se use en la configuración de etiquetas
         self.product_tree = ttk.Treeview(self, show='headings') 
         
         # Etiqueta para productos agotados
         self.product_tree.tag_configure('out_of_stock', foreground='red', font=('Arial', 11, 'bold'))
 
 
+
         # 1. Configuración del layout (Dos columnas: 40% Productos, 60% Carrito)
         self.grid_columnconfigure(0, weight=1, minsize=400) # Columna de búsqueda y productos
         self.grid_columnconfigure(1, weight=2, minsize=600) # Columna del carrito
         self.grid_rowconfigure(0, weight=1)
+
 
         # --- SECCIÓN IZQUIERDA: BÚSQUEDA Y PRODUCTOS ---
         self.left_panel = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
@@ -62,11 +65,12 @@ class PosPage(ctk.CTkFrame):
         
         # Campo de Búsqueda
         self.search_entry = ctk.CTkEntry(self.left_panel, 
-                                            placeholder_text="Escriba código o nombre...", 
-                                            width=350, height=40, 
-                                            fg_color="#2c3e50", border_color=ACCENT_CYAN, border_width=1)
+                                        placeholder_text="Escriba código o nombre...", 
+                                        width=350, height=40, 
+                                        fg_color="#2c3e50", border_color=ACCENT_CYAN, border_width=1)
         self.search_entry.bind("<KeyRelease>", self.search_products)
         self.search_entry.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="ew")
+
 
         # Frame para la tabla de resultados de búsqueda
         self.search_results_frame = ctk.CTkFrame(self.left_panel, fg_color=FRAME_DARK, corner_radius=10)
@@ -74,12 +78,13 @@ class PosPage(ctk.CTkFrame):
         self.search_results_frame.grid_rowconfigure(0, weight=1)
         self.search_results_frame.grid_columnconfigure(0, weight=1)
 
+
         # Treeview de Resultados de Búsqueda
         self.product_tree.destroy() # Destruimos el placeholder para crear el real
         self.product_tree = ttk.Treeview(self.search_results_frame, 
-                                            columns=("code", "name", "price_bs", "stock_disp", "price_usd_stock"), 
-                                            show='headings', 
-                                            style="Cart.Treeview")
+                                        columns=("code", "name", "price_bs", "stock_disp", "price_usd_stock"), 
+                                        show='headings', 
+                                        style="Cart.Treeview")
         
         self.product_tree.heading("code", text="Código"); self.product_tree.column("code", width=80, stretch=ctk.NO)
         self.product_tree.heading("name", text="Producto"); self.product_tree.column("name", minwidth=150, stretch=ctk.YES)
@@ -97,6 +102,7 @@ class PosPage(ctk.CTkFrame):
         product_scrollbar.grid(row=0, column=1, sticky="ns", pady=10)
         self.product_tree.configure(yscrollcommand=product_scrollbar.set)
 
+
         # --- SECCIÓN DERECHA: CARRITO Y RESUMEN ---
         self.right_panel = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
         self.right_panel.grid(row=0, column=1, padx=(10, 20), pady=20, sticky="nsew")
@@ -111,11 +117,12 @@ class PosPage(ctk.CTkFrame):
         self.cart_frame.grid_rowconfigure(0, weight=1)
         self.cart_frame.grid_columnconfigure(0, weight=1)
 
+
         # Treeview del Carrito
         self.cart_tree = ttk.Treeview(self.cart_frame, 
-                                            columns=("id", "name", "qty", "price_usd", "price_bs", "subtotal_bs"), 
-                                            show='headings',
-                                            style="Cart.Treeview")
+                                        columns=("id", "name", "qty", "price_usd", "price_bs", "subtotal_bs"), 
+                                        show='headings',
+                                        style="Cart.Treeview")
         
         self.cart_tree.heading("id", text="ID", anchor=ctk.CENTER); self.cart_tree.column("id", width=30, stretch=ctk.NO, anchor=ctk.CENTER)
         self.cart_tree.heading("name", text="Producto"); self.cart_tree.column("name", minwidth=250, stretch=ctk.YES)
@@ -140,16 +147,17 @@ class PosPage(ctk.CTkFrame):
         self.totals_frame.grid_rowconfigure(0, weight=1)
         self.totals_frame.grid_rowconfigure(1, weight=1)
 
+
         # Etiqueta de Tasa de Cambio
         self.rate_label = ctk.CTkLabel(self.totals_frame, text=f"Tasa Venta: Bs/ {self.current_exchange_rate:,.2f}", 
-                                         font=ctk.CTkFont(size=14), 
-                                         text_color=ACCENT_CYAN)
+                                        font=ctk.CTkFont(size=14), 
+                                        text_color=ACCENT_CYAN)
         self.rate_label.grid(row=0, column=0, padx=20, pady=(10, 0), sticky="w")
         
         # Etiqueta de Total
         self.total_label = ctk.CTkLabel(self.totals_frame, text="TOTAL: Bs/ 0.00", 
-                                         font=ctk.CTkFont(size=28, weight="bold"), 
-                                         text_color=ACCENT_GREEN)
+                                        font=ctk.CTkFont(size=28, weight="bold"), 
+                                        text_color=ACCENT_GREEN)
         self.total_label.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
         
         # Botón de Procesar Venta
@@ -161,6 +169,17 @@ class PosPage(ctk.CTkFrame):
         # Carga inicial de todos los productos en el panel de búsqueda
         self.load_all_products_for_search()
 
+        # Método agregado para refrescar productos automáticamente
+        self.refresh_products()
+
+
+    def refresh_products(self):
+        """Refresca la lista de productos cada 2 segundos si la página está visible."""
+        if str(self.winfo_viewable()) == '1':
+            self.load_all_products_for_search()
+        self.after(2000, self.refresh_products)
+
+
     def update_rate(self, new_rate):
         """Método llamado desde Dashboard para actualizar la tasa de cambio local."""
         if new_rate is not None and isinstance(new_rate, (int, float)):
@@ -171,10 +190,10 @@ class PosPage(ctk.CTkFrame):
         else:
             print("Advertencia: Tasa de cambio inválida recibida.")
 
+
     def load_all_products_for_search(self):
         """Carga todos los productos en la tabla de resultados de búsqueda al inicio."""
         self.search_products()
-
 
     def search_products(self, event=None):
         """Busca productos en tiempo real en la base de datos."""
@@ -183,6 +202,7 @@ class PosPage(ctk.CTkFrame):
         # Limpiar la tabla de resultados
         for item in self.product_tree.get_children():
             self.product_tree.delete(item)
+
 
         sql_query = """
             SELECT id, codigo, nombre, precio_venta, stock 
@@ -194,6 +214,7 @@ class PosPage(ctk.CTkFrame):
         # precio_venta viene en USD desde la DB
         products = self.db.fetch_all(sql_query, (search_term, search_term))
 
+
         for prod in products:
             id_prod, code, name, price_usd, stock_real = prod
             
@@ -204,25 +225,29 @@ class PosPage(ctk.CTkFrame):
             stock_en_carrito = self.cart.get(id_prod, {}).get('cantidad', 0)
             stock_disponible = int(stock_real) - stock_en_carrito
 
+
             row_tags = ()
             if stock_disponible <= 0:
                 row_tags = ('out_of_stock',)
+
 
             # CLAVE: En la columna oculta 'price_usd_stock' se guarda: [precio_usd, stock_real]
             # Esto permite una extracción limpia de valores numéricos después.
             data_oculta = f"{price_usd:.2f},{stock_real}"
 
-            self.product_tree.insert("", "end", 
-                                     iid=f"id_{id_prod}", 
-                                     values=(code, name, f"{price_bs:,.2f}", stock_disponible, data_oculta),
-                                     tags=row_tags)
 
-    
+            self.product_tree.insert("", "end", 
+                                    iid=f"id_{id_prod}", 
+                                    values=(code, name, f"{price_bs:,.2f}", stock_disponible, data_oculta),
+                                    tags=row_tags)
+
+
     def add_to_cart_event(self, event):
         """Maneja el doble clic en un producto para añadirlo al carrito, verificando el stock."""
         selected_item = self.product_tree.focus()
         if not selected_item:
             return
+
 
         values = self.product_tree.item(selected_item, 'values')
         
@@ -245,6 +270,7 @@ class PosPage(ctk.CTkFrame):
         if stock_disponible_en_vista <= 0:
             messagebox.showwarning("Stock", "Stock insuficiente para añadir este producto.")
             return
+
 
         product_id = int(selected_item.split('_')[1])
         name = values[1]
@@ -281,6 +307,7 @@ class PosPage(ctk.CTkFrame):
         # Extraer el ID del producto (el IID es "cart_item_X")
         product_id = int(selected_item.split('_')[-1])
 
+
         menu = Menu(self, tearoff=0)
         menu.add_command(label="➕ Aumentar Cantidad (+1)", command=lambda: self.adjust_cart_quantity(product_id, 1))
         menu.add_command(label="➖ Disminuir Cantidad (-1)", command=lambda: self.adjust_cart_quantity(product_id, -1))
@@ -288,11 +315,11 @@ class PosPage(ctk.CTkFrame):
         menu.add_command(label="✏️ Cambiar Cantidad...", command=lambda: self.prompt_for_quantity(product_id))
         menu.add_command(label="❌ Eliminar Producto", command=lambda: self.remove_from_cart(product_id))
         
-        # Mostrar el menú en la posición del clic
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
+
 
     
     def get_real_stock(self, product_id):
@@ -307,6 +334,7 @@ class PosPage(ctk.CTkFrame):
             return float(stock_data[0]) if stock_data and stock_data[0] is not None else 0.0
 
 
+
     def adjust_cart_quantity(self, product_id, adjustment):
         """Ajusta la cantidad del producto en el carrito (+1, -1)."""
         if product_id not in self.cart:
@@ -315,9 +343,11 @@ class PosPage(ctk.CTkFrame):
         new_qty = self.cart[product_id]['cantidad'] + adjustment
         real_stock = self.cart[product_id]['stock_real'] # Usar el stock real guardado
 
+
         if new_qty <= 0:
             self.remove_from_cart(product_id)
             return
+
 
         # Verificar stock máximo (usamos math.ceil para redondear hacia arriba el stock)
         if new_qty > math.floor(real_stock): 
@@ -331,14 +361,17 @@ class PosPage(ctk.CTkFrame):
         price_usd = self.cart[product_id]['precio_usd']
         self.cart[product_id]['precio_bs'] = price_usd * self.current_exchange_rate
 
+
         self.update_cart_display()
         self.search_products() # Actualizar vista de stock disponible
+
 
 
     def prompt_for_quantity(self, product_id):
         """Pide al usuario que ingrese una nueva cantidad para el producto."""
         if product_id not in self.cart:
             return
+
 
         current_qty = self.cart[product_id]['cantidad']
         real_stock = self.cart[product_id]['stock_real'] # Usar el stock real guardado
@@ -368,6 +401,7 @@ class PosPage(ctk.CTkFrame):
                 messagebox.showwarning("Stock", f"Cantidad inválida. El stock real es {real_stock:.2f}.")
                 return
 
+
             # Si la cantidad es válida, se actualiza
             self.cart[product_id]['cantidad'] = new_qty_rounded
             
@@ -375,12 +409,15 @@ class PosPage(ctk.CTkFrame):
             price_usd = self.cart[product_id]['precio_usd']
             self.cart[product_id]['precio_bs'] = price_usd * self.current_exchange_rate
 
+
             self.update_cart_display()
             self.search_products() # Actualizar vista de stock disponible
+
 
         except ValueError:
             messagebox.showerror("Error", "Por favor, ingrese un número válido.")
             return
+
 
 
     def remove_from_cart(self, product_id):
@@ -389,14 +426,16 @@ class PosPage(ctk.CTkFrame):
             del self.cart[product_id]
             self.update_cart_display()
             self.search_products() # Devolver el stock a la vista de búsqueda
-    
-    
+        
+        
     def update_cart_display(self):
         """Actualiza el Treeview del carrito con los datos del estado self.cart."""
         for item in self.cart_tree.get_children():
             self.cart_tree.delete(item)
 
+
         total_general_bs = 0.0
+
 
         for p_id, data in self.cart.items():
             cantidad = data['cantidad']
@@ -411,16 +450,18 @@ class PosPage(ctk.CTkFrame):
             
             total_general_bs += subtotal_bs
 
+
             self.cart_tree.insert("", "end",
                                   iid=f"cart_item_{p_id}",
                                   values=(
-                                      p_id, 
-                                      data['nombre'], 
-                                      f"{cantidad:,.2f}", 
-                                      f"{precio_usd:,.2f}", 
-                                      f"{precio_bs:,.2f}", 
-                                      f"{subtotal_bs:,.2f}"
+                                    p_id, 
+                                    data['nombre'], 
+                                    f"{cantidad:,.2f}", 
+                                    f"{precio_usd:,.2f}", 
+                                    f"{precio_bs:,.2f}", 
+                                    f"{subtotal_bs:,.2f}"
                                   ))
+
 
         # Actualizar la etiqueta del total general
         # Mostramos el total en Bs (para la vista) y, entre paréntesis, el total en USD
@@ -429,6 +470,7 @@ class PosPage(ctk.CTkFrame):
             self.total_label.configure(text=f"TOTAL: ${total_general_usd:,.2f} / Bs/ {total_general_bs:,.2f}")
         else:
             self.total_label.configure(text=f"TOTAL: Bs/ {total_general_bs:,.2f}")
+
 
 
     def process_sale(self):
@@ -442,6 +484,7 @@ class PosPage(ctk.CTkFrame):
         if self.current_exchange_rate <= 0:
             messagebox.showerror("Error", "La tasa de cambio no es válida. Por favor, ajústela en la configuración.")
             return
+
 
         try:
             # 1. Extraer el total en BS del label para calcular el total en USD
@@ -461,6 +504,7 @@ class PosPage(ctk.CTkFrame):
             
             current_rate = self.current_exchange_rate 
 
+
             # 2. Llamar al método transaccional de la base de datos
             # IMPORTANTE: Pasamos el total en USD
             success, message = self.db.process_sale_transaction(
@@ -469,6 +513,7 @@ class PosPage(ctk.CTkFrame):
                 current_rate, 
                 self.user_id # ID del usuario actual
             )
+
 
             if success:
                 # Venta Exitosa: Limpiar y notificar
@@ -487,3 +532,4 @@ class PosPage(ctk.CTkFrame):
             messagebox.showerror("Error", "Error al calcular los totales. Verifique la tasa y los precios.")
         except Exception as e:
             messagebox.showerror("Error Inesperado", f"Ocurrió un error al procesar la venta: {e}")
+
