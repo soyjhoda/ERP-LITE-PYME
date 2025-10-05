@@ -2,7 +2,9 @@ import customtkinter as ctk
 from tkinter import messagebox, ttk, filedialog
 from datetime import datetime
 from .utils import is_valid_float
+from .sales_report_page import SalesReportPage
 import hashlib 
+
 
 
 # Definiciones de estilo
@@ -14,9 +16,11 @@ FRAME_MID = "#1B263B"
 FRAME_LIGHT = "#2c3e50"
 
 
+
 # =======================================================================
 # VENTANA MODAL PARA CREAR USUARIO
 # =======================================================================
+
 
 
 class CreateUserWindow(ctk.CTkToplevel):
@@ -36,9 +40,11 @@ class CreateUserWindow(ctk.CTkToplevel):
         self._create_widgets()
 
 
+
     def _create_widgets(self):
         ctk.CTkLabel(self, text="Registro de Nuevo Usuario", font=ctk.CTkFont(size=20, weight="bold"), 
                      text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10), sticky="n")
+
 
 
         form_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
@@ -50,14 +56,17 @@ class CreateUserWindow(ctk.CTkToplevel):
         self.name_entry.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
 
 
+
         ctk.CTkLabel(form_frame, text="Nombre de Usuario (Login):", text_color="gray70").grid(row=2, column=0, sticky="w", padx=15, pady=(10, 0))
         self.username_entry = ctk.CTkEntry(form_frame, placeholder_text="Ej: ana.lopez", font=ctk.CTkFont(size=14))
         self.username_entry.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 10))
 
 
+
         ctk.CTkLabel(form_frame, text="Contraseña Inicial:", text_color="gray70").grid(row=4, column=0, sticky="w", padx=15, pady=(10, 0))
         self.password_entry = ctk.CTkEntry(form_frame, placeholder_text="Mínimo 6 caracteres", show="*", font=ctk.CTkFont(size=14))
         self.password_entry.grid(row=5, column=0, sticky="ew", padx=15, pady=(0, 10))
+
 
 
         ctk.CTkLabel(form_frame, text="Rol Asignado:", text_color="gray70").grid(row=6, column=0, sticky="w", padx=15, pady=(10, 0))
@@ -70,6 +79,7 @@ class CreateUserWindow(ctk.CTkToplevel):
         ctk.CTkButton(self, text="✅ Registrar Usuario", command=self._create_user_action, 
                       fg_color=ACCENT_CYAN, text_color=BACKGROUND_DARK, hover_color="#00bebe",
                       font=ctk.CTkFont(size=16, weight="bold")).grid(row=2, column=0, sticky="ew", padx=20, pady=(10, 20))
+
 
 
     def _create_user_action(self):
@@ -87,10 +97,12 @@ class CreateUserWindow(ctk.CTkToplevel):
             return
 
 
+
         exist = self.master.db.fetch_one("SELECT * FROM usuarios WHERE username = ?", (username,))
         if exist:
             messagebox.showerror("Error", "El nombre de usuario (login) ya existe. Elija otro.")
             return
+
 
 
         result = self.master.db.create_user(username, password, name, role)
@@ -102,9 +114,11 @@ class CreateUserWindow(ctk.CTkToplevel):
             messagebox.showerror("Error", "No se pudo crear el usuario. Verifique la conexión a la base de datos.")
 
 
+
 # =======================================================================
 # VENTANA MODAL PARA CAMBIAR CONTRASEÑA
 # =======================================================================
+
 
 
 class ChangePasswordWindow(ctk.CTkToplevel):
@@ -120,12 +134,15 @@ class ChangePasswordWindow(ctk.CTkToplevel):
         self.grab_set()
         self.resizable(False, False)
 
+
         self.grid_columnconfigure(0, weight=1)
         self._create_widgets()
+
 
     def _create_widgets(self):
         ctk.CTkLabel(self, text="🔑 Nueva Contraseña", font=ctk.CTkFont(size=20, weight="bold"), 
                      text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10), sticky="n")
+
 
 
         form_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
@@ -137,6 +154,7 @@ class ChangePasswordWindow(ctk.CTkToplevel):
         self.new_password_entry.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
 
 
+
         ctk.CTkLabel(form_frame, text="Confirmar Contraseña:", text_color="gray70").grid(row=2, column=0, sticky="w", padx=15, pady=(10, 0))
         self.confirm_password_entry = ctk.CTkEntry(form_frame, placeholder_text="Repita la contraseña", show="*", font=ctk.CTkFont(size=14))
         self.confirm_password_entry.grid(row=3, column=0, sticky="ew", padx=15, pady=(0, 15))
@@ -144,6 +162,7 @@ class ChangePasswordWindow(ctk.CTkToplevel):
         ctk.CTkButton(form_frame, text="✅ Actualizar Contraseña", command=self._change_password_action, 
                       fg_color=ACCENT_GREEN, text_color=BACKGROUND_DARK, hover_color="#008a38",
                       font=ctk.CTkFont(size=16, weight="bold")).grid(row=4, column=0, sticky="ew", padx=20, pady=(10, 20))
+
 
     def _change_password_action(self):
         new_password = self.new_password_entry.get()
@@ -154,6 +173,7 @@ class ChangePasswordWindow(ctk.CTkToplevel):
             return
 
 
+
         if len(new_password) < 6:
             messagebox.showwarning("Contraseña Débil", "La contraseña debe tener al menos 6 caracteres.")
             return
@@ -161,6 +181,7 @@ class ChangePasswordWindow(ctk.CTkToplevel):
         if new_password != confirm_password:
             messagebox.showerror("Error", "Las contraseñas no coinciden.")
             return
+
 
 
         try:
@@ -177,9 +198,11 @@ class ChangePasswordWindow(ctk.CTkToplevel):
 
 
 
+
 # =======================================================================
 # VENTANA MODAL PARA EDITAR USUARIO [AGREGADA]
 # =======================================================================
+
 
 
 class EditUserWindow(ctk.CTkToplevel):
@@ -190,12 +213,15 @@ class EditUserWindow(ctk.CTkToplevel):
         self.user_id_to_edit = user_id_to_edit
         self.refresh_callback = refresh_callback
 
+
         self.user_data = self._load_user_data()
+
 
         if not self.user_data:
             messagebox.showerror("Error", f"No se pudo cargar el usuario con ID: {user_id_to_edit}")
             self.destroy()
             return
+
 
         self.title(f"Editar Usuario: {self.user_data.get('nombre_completo', 'N/A')}")
         self.geometry("400x520")
@@ -203,8 +229,10 @@ class EditUserWindow(ctk.CTkToplevel):
         self.grab_set()
         self.resizable(False, False)
 
+
         self.grid_columnconfigure(0, weight=1)
         self._create_widgets()
+
 
     def _load_user_data(self):
         row = self.db.fetch_one("SELECT * FROM usuarios WHERE id = ?", (self.user_id_to_edit,))
@@ -212,20 +240,26 @@ class EditUserWindow(ctk.CTkToplevel):
             return dict(row)
         return None
 
+
     def _create_widgets(self):
         ctk.CTkLabel(self, text="🛠️ Editar Datos de Usuario", font=ctk.CTkFont(size=20, weight="bold"),
                      text_color=ACCENT_CYAN).grid(row=0, column=0, padx=20, pady=(20, 10), sticky="n")
+
 
         form_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
         form_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
         form_frame.grid_columnconfigure(0, weight=1)
 
+
         ctk.CTkLabel(form_frame, text=f"ID (Login): {self.user_data['username']}", text_color="gray50").grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
+
 
         ctk.CTkLabel(form_frame, text="Nombre Completo:", text_color="gray70").grid(row=1, column=0, sticky="w", padx=15, pady=(10, 0))
         self.name_entry = ctk.CTkEntry(form_frame, font=ctk.CTkFont(size=14))
         self.name_entry.insert(0, self.user_data.get("nombre_completo", ""))
         self.name_entry.grid(row=2, column=0, sticky="ew", padx=15, pady=(0, 10))
+
+
 
         ctk.CTkLabel(form_frame, text="Rol Asignado:", text_color="gray70").grid(row=3, column=0, sticky="w", padx=15, pady=(10, 0))
         self.role_combobox = ctk.CTkComboBox(form_frame,
@@ -234,23 +268,29 @@ class EditUserWindow(ctk.CTkToplevel):
         self.role_combobox.set(self.user_data.get("rol", "Vendedor"))
         self.role_combobox.grid(row=4, column=0, sticky="ew", padx=15, pady=(0, 20))
 
+
         ctk.CTkButton(form_frame, text="💾 Guardar Cambios", command=self._update_user_action,
                       fg_color=ACCENT_GREEN, hover_color="#008a38",
                       font=ctk.CTkFont(size=16, weight="bold")).grid(row=5, column=0, sticky="ew", padx=15, pady=(10, 10))
+
 
         ctk.CTkButton(form_frame, text="🔑 Cambiar Contraseña", command=self._open_password_change,
                       fg_color=FRAME_LIGHT, hover_color=FRAME_MID, border_color=ACCENT_CYAN, border_width=2,
                       font=ctk.CTkFont(size=14)).grid(row=6, column=0, sticky="ew", padx=15, pady=(0, 20))
 
+
     def _update_user_action(self):
         new_name = self.name_entry.get().strip()
         new_role = self.role_combobox.get()
+
 
         if not all([new_name, new_role]):
             messagebox.showwarning("Faltan Datos", "El nombre y el rol son obligatorios.")
             return
 
+
         success = self.db.update_user_details(self.user_id_to_edit, self.user_data["username"], new_name, new_role, self.user_data.get("foto_path"))
+
 
         if success:
             messagebox.showinfo("Éxito", f"Datos del usuario '{new_name}' actualizados.")
@@ -258,6 +298,7 @@ class EditUserWindow(ctk.CTkToplevel):
             self.destroy()
         else:
             messagebox.showerror("Error", "Error al actualizar el usuario.")
+
 
 
     def _open_password_change(self):
@@ -269,13 +310,17 @@ class EditUserWindow(ctk.CTkToplevel):
         )
 
 
+
+
 # =======================================================================
 # CLASE PRINCIPAL: CONFIG PAGE
 # =======================================================================
 
 
+
+
 class ConfigPage(ctk.CTkFrame):
-    """Panel de Administración centralizado para tareas sensibles (Tasa, Usuarios, Seguridad)."""
+    """Panel de Administración centralizado para tareas sensibles (Tasa, Usuarios, Seguridad, Ventas)."""
     
     def __init__(self, master, db_manager, user_id, update_rate_callback, user_role):
         super().__init__(master, fg_color=BACKGROUND_DARK)
@@ -297,9 +342,12 @@ class ConfigPage(ctk.CTkFrame):
         self.edit_full_user_button = None 
 
 
+
         # Referencias para el control panel de edición
         self.edit_user_name_label = None 
         self.edit_username_label = None
+
+
 
 
 
@@ -324,6 +372,8 @@ class ConfigPage(ctk.CTkFrame):
         style.map('Treeview', background=[('selected', ACCENT_CYAN)])
 
 
+
+
     def _create_widgets(self):
         """Crea todos los elementos de la UI, organizados por pestañas."""
         
@@ -335,6 +385,7 @@ class ConfigPage(ctk.CTkFrame):
         ctk.CTkLabel(title_frame, text="🛡️ PANEL DE ADMINISTRACIÓN", 
                      font=ctk.CTkFont(size=26, weight="bold"), 
                      text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 10))
+
 
 
         # --- TabView para organizar secciones ---
@@ -357,8 +408,15 @@ class ConfigPage(ctk.CTkFrame):
         self.tabview.add("Herramientas y Seguridad")
         self._setup_security_tab(self.tabview.tab("Herramientas y Seguridad"))
         
-        # Establecer la pestaña inicial
+        # --- Pestaña 4: Ventas (Nueva Pestaña con módulo SalesReportPage) ---
+        if self.user_role in ("Administrador Total", "Gerente"):
+            self.tabview.add("Ventas")
+            ventas_tab = self.tabview.tab("Ventas")
+            self.sales_report_page = SalesReportPage(ventas_tab, self.db, self.user_role)
+            self.sales_report_page.pack(fill="both", expand=True)
+        
         self.tabview.set("Empresa y Finanzas")
+
 
 
     # =======================================================================
@@ -366,11 +424,13 @@ class ConfigPage(ctk.CTkFrame):
     # =======================================================================
 
 
+
     def _setup_empresa_tab(self, tab_frame):
         """Configura la pestaña de Tasa de Cambio."""
         tab_frame.grid_columnconfigure(0, weight=1)
         tab_frame.grid_rowconfigure(0, weight=0)
         tab_frame.grid_rowconfigure(1, weight=1)
+
 
 
         # Tarjeta de Tasa de Cambio
@@ -385,8 +445,8 @@ class ConfigPage(ctk.CTkFrame):
         # Valor Actual
         ctk.CTkLabel(rate_card, text="Valor Actual:", text_color="gray70").grid(row=1, column=0, sticky="w", padx=20, pady=(10, 0))
         self.current_rate_label = ctk.CTkLabel(rate_card, text="Cargando...", 
-                                               font=ctk.CTkFont(size=22, weight="bold"), 
-                                               text_color=ACCENT_GREEN)
+                                              font=ctk.CTkFont(size=22, weight="bold"), 
+                                              text_color=ACCENT_GREEN)
         self.current_rate_label.grid(row=2, column=0, sticky="w", padx=20, pady=(0, 20))
         
         # Establecer Nueva Tasa
@@ -403,10 +463,12 @@ class ConfigPage(ctk.CTkFrame):
         save_button.grid(row=3, column=0, columnspan=2, pady=(0, 20))
 
 
+
     def _setup_users_tab(self, tab_frame):
         """Configura la pestaña de Gestión de Usuarios."""
         tab_frame.grid_columnconfigure(0, weight=1)
         tab_frame.grid_rowconfigure(1, weight=1)
+
 
 
         # Título
@@ -415,12 +477,14 @@ class ConfigPage(ctk.CTkFrame):
                      text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
 
 
+
         # Contenedor principal para la gestión
         main_container = ctk.CTkFrame(tab_frame, fg_color=FRAME_LIGHT, corner_radius=10)
         main_container.grid(row=1, column=0, sticky="nsew", padx=20, pady=(10, 20))
         main_container.grid_columnconfigure(0, weight=3) # Lista de usuarios
         main_container.grid_columnconfigure(1, weight=1) # Controles de edición
         main_container.grid_rowconfigure(0, weight=1)
+
 
 
         # --- Sub-sección Izquierda: Listado de Usuarios (Treeview) ---
@@ -434,6 +498,7 @@ class ConfigPage(ctk.CTkFrame):
                      text_color=ACCENT_CYAN).grid(row=0, column=0, sticky="w", pady=(0, 5))
 
 
+
         # Treeview
         self.users_tree = ttk.Treeview(list_frame, columns=("ID", "Nombre", "Rol"), show="headings")
         self.users_tree.heading("ID", text="ID (Corto)", anchor=ctk.W)
@@ -443,6 +508,7 @@ class ConfigPage(ctk.CTkFrame):
         self.users_tree.column("ID", width=80, stretch=ctk.NO, anchor=ctk.W)
         self.users_tree.column("Nombre", minwidth=150, anchor=ctk.W)
         self.users_tree.column("Rol", width=120, stretch=ctk.NO, anchor=ctk.W)
+
 
 
         self.users_tree.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
@@ -457,10 +523,11 @@ class ConfigPage(ctk.CTkFrame):
         
         # NUEVO BOTÓN: Crear Usuario (Row 2)
         create_user_button = ctk.CTkButton(list_frame, text="➕ Crear Nuevo Usuario", 
-                                            command=self._open_create_user_window, 
-                                            fg_color=ACCENT_GREEN, hover_color="#008a38",
-                                            font=ctk.CTkFont(size=14, weight="bold"))
+                                           command=self._open_create_user_window, 
+                                           fg_color=ACCENT_GREEN, hover_color="#008a38",
+                                           font=ctk.CTkFont(size=14, weight="bold"))
         create_user_button.grid(row=2, column=0, sticky="ew", pady=(5, 10))
+
 
 
         # --- Sub-sección Derecha: Controles de Edición ---
@@ -474,6 +541,7 @@ class ConfigPage(ctk.CTkFrame):
                      text_color="white").grid(row=0, column=0, sticky="w", padx=15, pady=(15, 5))
 
 
+
         # ID (solo lectura)
         ctk.CTkLabel(control_frame, text="ID de Usuario (Corto):", text_color="gray70").grid(row=1, column=0, sticky="w", padx=15, pady=(10, 0))
         self.edit_user_id = ctk.CTkLabel(control_frame, text="Seleccione un usuario", text_color="gray50")
@@ -485,10 +553,12 @@ class ConfigPage(ctk.CTkFrame):
         self.edit_user_name_label.grid(row=4, column=0, sticky="w", padx=15, pady=(0, 10))
 
 
+
         # Username (Login) - NUEVO
         ctk.CTkLabel(control_frame, text="Username (Login):", text_color="gray70").grid(row=5, column=0, sticky="w", padx=15, pady=(10, 0))
         self.edit_username_label = ctk.CTkLabel(control_frame, text="", text_color="white") # Nueva referencia
         self.edit_username_label.grid(row=6, column=0, sticky="w", padx=15, pady=(0, 10))
+
 
 
         # Rol
@@ -500,9 +570,10 @@ class ConfigPage(ctk.CTkFrame):
         self.role_combobox.grid(row=8, column=0, sticky="ew", padx=15, pady=(0, 20))
 
 
+
         # Botón de Guardar Rol Rápido
         self.save_role_button = ctk.CTkButton(control_frame, text="Guardar Rol", command=self.save_user_role,
-                             fg_color=ACCENT_GREEN, hover_color="#008a38")
+                                             fg_color=ACCENT_GREEN, hover_color="#008a38")
         self.save_role_button.grid(row=9, column=0, sticky="ew", padx=15, pady=(0, 10))
         
         # Botón de Edición Completa [NUEVO]
@@ -513,8 +584,10 @@ class ConfigPage(ctk.CTkFrame):
         
         # Botón de Eliminar (Referencia guardada para control de estado)
         self.delete_user_button = ctk.CTkButton(control_frame, text="Eliminar Usuario 🗑️", command=self.delete_user, 
-                             fg_color=ACCENT_RED, hover_color="#8b0000")
+                                                fg_color=ACCENT_RED, hover_color="#8b0000")
         self.delete_user_button.grid(row=11, column=0, sticky="ew", padx=15, pady=(0, 15))
+
+
 
 
 
@@ -524,9 +597,12 @@ class ConfigPage(ctk.CTkFrame):
         tab_frame.grid_rowconfigure(3, weight=1)
 
 
+
+
         ctk.CTkLabel(tab_frame, text="🔑 HERRAMIENTAS Y COPIA DE SEGURIDAD", 
                      font=ctk.CTkFont(size=20, weight="bold"), 
                      text_color="white").grid(row=0, column=0, sticky="w", padx=20, pady=(20, 10))
+
 
 
         # --- TARJETA DE BACKUP (Exportar) ---
@@ -544,7 +620,7 @@ class ConfigPage(ctk.CTkFrame):
         ctk.CTkButton(backup_card, text="⬇️ Generar Backup", command=self.create_backup, 
                       fg_color=ACCENT_GREEN, hover_color="#008a38",
                       font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
-                        
+                              
         # --- TARJETA DE RESTAURACIÓN (Importar) ---
         restore_card = ctk.CTkFrame(tab_frame, fg_color=FRAME_MID, corner_radius=10)
         restore_card.grid(row=2, column=0, sticky="ew", padx=20, pady=(5, 20))
@@ -560,6 +636,7 @@ class ConfigPage(ctk.CTkFrame):
         ctk.CTkButton(restore_card, text="⬆️ Restaurar desde Backup", command=self.restore_database, 
                       fg_color=ACCENT_RED, hover_color="#8b0000",
                       font=ctk.CTkFont(size=14, weight="bold")).grid(row=2, column=0, padx=20, pady=(5, 20), sticky="w")
+
 
 
     # =======================================================================
@@ -579,12 +656,14 @@ class ConfigPage(ctk.CTkFrame):
             self.current_rate_label.configure(text="Error", text_color=ACCENT_RED)
 
 
+
     def save_exchange_rate(self):
         """Guarda la nueva tasa de cambio y actualiza el dashboard."""
         
         if self.user_role not in ["Administrador Total", "Gerente"]:
             messagebox.showwarning("Permiso Denegado", "Solo Administradores y Gerentes pueden modificar la tasa de cambio.")
             return
+
 
 
         new_rate_str = self.new_rate_entry.get().strip()
@@ -598,11 +677,13 @@ class ConfigPage(ctk.CTkFrame):
             return
 
 
+
         try:
             new_rate_float = float(new_rate_str)
             if new_rate_float <= 0:
                 messagebox.showerror("Error de Valor", "La tasa de cambio debe ser mayor a cero.")
                 return
+
 
 
             self.db.set_exchange_rate(new_rate_float)
@@ -615,13 +696,16 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showinfo("Éxito", f"Tasa de cambio actualizada a Bs. {new_rate_float:,.2f}.")
 
 
+
         except Exception as e:
             messagebox.showerror("Error al Guardar", f"Ocurrió un error al guardar la tasa: {e}")
             
 
+
     # =======================================================================
     # LÓGICA DE FUNCIONALIDADES - BACKUP Y RESTAURACIÓN 
     # =======================================================================
+
 
 
     def create_backup(self):
@@ -658,6 +742,7 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante el backup: {e}")
 
 
+
     def restore_database(self):
         """Inicia el proceso de restauración de la base de datos desde un archivo de backup."""
         if self.user_role != "Administrador Total":
@@ -665,12 +750,12 @@ class ConfigPage(ctk.CTkFrame):
             return
 
 
+
         if not messagebox.askyesno("Confirmar Restauración (Peligro)", 
-                                    "🚨 ¡ADVERTENCIA! Este proceso **REEMPLAZARÁ PERMANENTEMENTE** la base de datos actual.\n"
-                                    "Cualquier dato añadido desde el último backup se perderá.\n\n"
-                                    "¿Está SEGURO que desea continuar con la restauración?"):
+                                  "🚨 ¡ADVERTENCIA! Este proceso **REEMPLAZARÁ PERMANENTEMENTE** la base de datos actual.\n"
+                                  "Cualquier dato añadido desde el último backup se perderá.\n\n"
+                                  "¿Está SEGURO que desea continuar con la restauración?"):
             return 
-        
         try:
             source_path = filedialog.askopenfilename(
                 title="Seleccionar Archivo de Base de Datos para Restaurar",
@@ -692,6 +777,7 @@ class ConfigPage(ctk.CTkFrame):
                 
         except Exception as e:
             messagebox.showerror("Error Inesperado", f"Ocurrió un error inesperado durante la restauración: {e}")
+
 
 
     # =======================================================================
@@ -719,6 +805,8 @@ class ConfigPage(ctk.CTkFrame):
         EditUserWindow(self, self.db, int(self.current_selected_user_id), self.load_users_data)
 
 
+
+
     def load_users_data(self):
         """Carga todos los usuarios reales desde la DB y refresca el árbol."""
         try:
@@ -732,16 +820,21 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showerror("Error", f"No se pudo cargar la lista de usuarios: {e}")
 
 
+
+
     def _refresh_user_tree(self, users_data):
         self.users_tree.delete(*self.users_tree.get_children())
+
 
         for user_id, data in users_data.items():
             short_id = user_id[-4:].upper()
             self.users_tree.insert("", "end", iid=user_id, values=(short_id, data["nombre_completo"], data["rol"]))
 
 
+
     def _on_user_select(self, event):
         selected_item = self.users_tree.focus()
+
 
         if not selected_item:
             self.current_selected_user_id = None
@@ -754,8 +847,10 @@ class ConfigPage(ctk.CTkFrame):
             self.edit_full_user_button.configure(state="disabled")
             return
 
+
         self.current_selected_user_id = selected_item
         user_data = self.users_data.get(selected_item)
+
 
         if user_data:
             short_id = selected_item[-4:].upper()
@@ -764,12 +859,15 @@ class ConfigPage(ctk.CTkFrame):
             self.edit_username_label.configure(text=user_data.get("username", ""))
             self.role_combobox.set(user_data.get("rol", "Vendedor"))
 
+
             self.delete_user_button.configure(state="normal")
             self.save_role_button.configure(state="normal")
             self.edit_full_user_button.configure(state="normal")
 
+
             if selected_item == str(self.user_id):
                 self.delete_user_button.configure(state="disabled", text="No se puede autoeliminar")
+
 
 
     def save_user_role(self):
@@ -777,8 +875,10 @@ class ConfigPage(ctk.CTkFrame):
             messagebox.showwarning("Advertencia", "Seleccione un usuario primero.")
             return
 
+
         new_role = self.role_combobox.get()
         user_id = self.current_selected_user_id
+
 
         success = self.db.update_user_role(int(user_id), new_role)
         if success:
@@ -788,16 +888,21 @@ class ConfigPage(ctk.CTkFrame):
         else:
             messagebox.showerror("Error", "No se pudo actualizar el rol en la base de datos.")
 
+
+
     def delete_user(self):
         if not self.current_selected_user_id:
             messagebox.showwarning("Advertencia", "Seleccione un usuario primero.")
             return
 
+
         user_id = self.current_selected_user_id
         user_name = self.users_data.get(user_id, {}).get("nombre_completo", "Usuario Desconocido")
 
+
         if not messagebox.askyesno("Confirmar Eliminación", f"¿Está seguro de que desea ELIMINAR permanentemente al usuario '{user_name}' (ID: {user_id})?"):
             return
+
 
         success = self.db.delete_user(int(user_id))
         if success:
