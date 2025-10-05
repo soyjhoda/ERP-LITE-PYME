@@ -18,7 +18,6 @@ class SalesReportPage(ctk.CTkFrame):
         
         self._create_widgets()
         
-        # Vincular doble clic para mostrar detalles
         self.sales_tree.bind("<Double-1>", self.on_sale_double_click)
 
 
@@ -133,27 +132,99 @@ class SalesReportPage(ctk.CTkFrame):
 
 
     def show_sale_details(self, venta_id):
+        self.current_venta_id = venta_id  # Guardar para usar en métodos editar/eliminar
         details_window = ctk.CTkToplevel(self)
         details_window.title(f"Detalles de la Venta #{venta_id}")
-        details_window.geometry("700x400")
+        details_window.geometry("700x450")
         
         columns = ("producto", "cantidad", "precio_unitario_usd", "precio_unitario_bs", "subtotal_usd", "subtotal_bs")
-        tree = ttk.Treeview(details_window, columns=columns, show="headings")
+        self.detail_tree = ttk.Treeview(details_window, columns=columns, show="headings")
         for col in columns:
-            tree.heading(col, text=col.replace("_", " ").title())
-            tree.column(col, width=100, anchor="center")
+            self.detail_tree.heading(col, text=col.replace("_", " ").title())
+            self.detail_tree.column(col, width=100, anchor="center")
+        self.detail_tree.pack(expand=True, fill="both", padx=10, pady=10)
 
-        tree.pack(expand=True, fill="both", padx=10, pady=10)
-        
+        btn_frame = ctk.CTkFrame(details_window)
+        btn_frame.pack(fill="x", pady=(0, 10), padx=10)
+
+        edit_btn = ctk.CTkButton(btn_frame, text="✏️ Editar Cantidad", command=self.edit_product_quantity)
+        edit_btn.pack(side="left", padx=5)
+
+        del_btn = ctk.CTkButton(btn_frame, text="🗑️ Eliminar Producto", command=self.delete_product)
+        del_btn.pack(side="left", padx=5)
+
+        self.load_sale_details()
+
+
+    def load_sale_details(self):
+        for i in self.detail_tree.get_children():
+            self.detail_tree.delete(i)
         query = """
-            SELECT nombre_producto, cantidad, precio_unitario_usd, precio_unitario_bs, subtotal_usd, subtotal_bs
+            SELECT nombre_producto, cantidad, precio_unitario_usd, precio_unitario_bs, subtotal_usd, subtotal_bs, id
             FROM detalles_venta WHERE venta_id = ?
         """
-        rows = self.db.fetch_all(query, (venta_id,))
-        
+        rows = self.db.fetch_all(query, (self.current_venta_id,))
+        self.product_ids = []  # Para guardar ids de detalles_venta en misma orden que la tabla
         for r in rows:
-            values = list(r)
-            tree.insert("", "end", values=values)
+            values = list(r[:-1])  # Todos menos el id que no se muestra en tabla
+            self.detail_tree.insert("", "end", values=values)
+            self.product_ids.append(r[-1])
+
+
+    def edit_product_quantity(self):
+        selected = self.detail_tree.selection()
+        if not selected:
+            messagebox.showinfo("Info", "Seleccione un producto para editar")
+            return
+        index = self.detail_tree.index(selected[0])
+
+        current_qty = self.detail_tree.item(selected[0], "values")[1]
+
+        def save_edit():
+            try:
+                new_qty = int(entry.get())
+                if new_qty <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Error", "Cantidad inválida")
+                return
+            product_id = self.product_ids[index]
+            query = """
+                UPDATE detalles_venta SET cantidad = ?,
+                subtotal_usd = precio_unitario_usd * ?,
+                subtotal_bs = precio_unitario_bs * ?
+                WHERE id = ?
+            """
+            self.db.execute_query(query, (new_qty, new_qty, new_qty, product_id))
+            self.load_sale_details()
+            edit_win.destroy()
+            messagebox.showinfo("Éxito", "Cantidad actualizada correctamente.")
+
+        edit_win = ctk.CTkToplevel()
+        edit_win.title("Editar Cantidad")
+        ctk.CTkLabel(edit_win, text=f"Editar cantidad actual: {current_qty}").pack(padx=10, pady=10)
+        entry = ctk.CTkEntry(edit_win)
+        entry.insert(0, str(current_qty))
+        entry.pack(padx=10, pady=10)
+        save_btn = ctk.CTkButton(edit_win, text="Guardar", command=save_edit)
+        save_btn.pack(padx=10, pady=10)
+
+
+    def delete_product(self):
+        selected = self.detail_tree.selection()
+        if not selected:
+            messagebox.showinfo("Info", "Seleccione un producto para eliminar")
+            return
+        answer = messagebox.askyesno("Confirmar", "¿Está seguro que desea eliminar este producto de la venta?")
+        if not answer:
+            return
+        index = self.detail_tree.index(selected[0])
+        product_id = self.product_ids[index]
+
+        query = "DELETE FROM detalles_venta WHERE id = ?"
+        self.db.execute_query(query, (product_id,))
+        self.load_sale_details()
+        messagebox.showinfo("Éxito", "Producto eliminado correctamente.")
 
 
     def update_chart(self, data):
