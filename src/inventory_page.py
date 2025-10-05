@@ -12,10 +12,11 @@ ACCENT_RED = "#e74c3c"
 
 
 class InventoryPage(ctk.CTkFrame):
-    def __init__(self, master, db_manager, user_id):
+    def __init__(self, master, db_manager, user_id, user_role):
         super().__init__(master, fg_color=BACKGROUND_DARK)
         self.db = db_manager
         self.user_id = user_id
+        self.user_role = user_role
         
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -39,14 +40,23 @@ class InventoryPage(ctk.CTkFrame):
         self.search_entry.bind("<KeyRelease>", self.search_products)
         self.search_entry.grid(row=0, column=0, padx=20, pady=10, sticky="w")
 
-        ctk.CTkButton(self.search_frame, text="➕ Añadir Producto", command=self.open_add_product_window,
-                      fg_color=ACCENT_GREEN, hover_color="#008a38", height=40).grid(row=0, column=1, padx=(10,5), pady=10, sticky="e")
+        self.add_button = ctk.CTkButton(self.search_frame, text="➕ Añadir Producto", command=self.open_add_product_window,
+                      fg_color=ACCENT_GREEN, hover_color="#008a38", height=40)
+        self.add_button.grid(row=0, column=1, padx=(10,5), pady=10, sticky="e")
 
-        ctk.CTkButton(self.search_frame, text="✏️ Editar Producto", command=self.open_edit_product_window,
-                      fg_color="#3498db", hover_color="#2980b9", height=40).grid(row=0, column=2, padx=5, pady=10, sticky="e")
+        self.edit_button = ctk.CTkButton(self.search_frame, text="✏️ Editar Producto", command=self.open_edit_product_window,
+                      fg_color="#3498db", hover_color="#2980b9", height=40)
+        self.edit_button.grid(row=0, column=2, padx=5, pady=10, sticky="e")
 
-        ctk.CTkButton(self.search_frame, text="🗑️ Eliminar Producto", command=self.delete_selected_product,
-                      fg_color=ACCENT_RED, hover_color="#c0392b", height=40).grid(row=0, column=3, padx=(5,20), pady=10, sticky="e")
+        self.delete_button = ctk.CTkButton(self.search_frame, text="🗑️ Eliminar Producto", command=self.delete_selected_product,
+                      fg_color=ACCENT_RED, hover_color="#c0392b", height=40)
+        self.delete_button.grid(row=0, column=3, padx=(5,20), pady=10, sticky="e")
+
+        # Deshabilitar botones si rol no autorizado
+        if self.user_role not in ("Administrador Total", "Gerente"):
+            self.add_button.configure(state="disabled")
+            self.edit_button.configure(state="disabled")
+            self.delete_button.configure(state="disabled")
 
         self.table_frame = ctk.CTkFrame(self, fg_color=FRAME_MID, corner_radius=10)
         self.table_frame.grid(row=1, column=0, padx=20, pady=(10,20), sticky="nsew")
@@ -115,7 +125,6 @@ class InventoryPage(ctk.CTkFrame):
 
         self.inventory_tree.tag_configure('min_stock', background=ACCENT_RED, foreground='white')
 
-
     def search_products(self, event=None):
         query = self.search_entry.get().strip()
 
@@ -158,9 +167,15 @@ class InventoryPage(ctk.CTkFrame):
             self.inventory_tree.insert("", "end", values=formatted_product, tags=tags)
 
     def open_add_product_window(self):
+        if self.user_role not in ("Administrador Total", "Gerente"):
+            messagebox.showwarning("Sin permiso", "No tienes permisos para añadir productos.")
+            return
         self._open_product_window(is_edit=False)
 
     def open_edit_product_window(self):
+        if self.user_role not in ("Administrador Total", "Gerente"):
+            messagebox.showwarning("Sin permiso", "No tienes permisos para editar productos.")
+            return
         selected = self.inventory_tree.selection()
         if not selected:
             messagebox.showwarning("Atención", "Seleccione un producto para editar.")
@@ -181,7 +196,6 @@ class InventoryPage(ctk.CTkFrame):
             "proveedor": values[9] if values[9] != 'N/A' else "",
         }
         self._open_product_window(is_edit=True, product_data=product_data)
-
 
     def _open_product_window(self, is_edit=False, product_data=None):
         action = "Editar Producto" if is_edit else "Añadir Nuevo Producto"
@@ -249,7 +263,6 @@ class InventoryPage(ctk.CTkFrame):
         ctk.CTkButton(self.product_window, text="❌ Cancelar", command=self.product_window.destroy,
                       fg_color="#34495e", hover_color="#2c3e50", height=40).grid(row=3, column=0, padx=20, pady=(0, 20), sticky="ew")
 
-        # Cargar datos para editar
         if is_edit and product_data:
             fields["Código de Producto (único):"].set(product_data["codigo"])
             fields["Nombre del Producto:"].set(product_data["nombre"])
@@ -262,6 +275,9 @@ class InventoryPage(ctk.CTkFrame):
             self.category_var.set(product_data["categoria"])
 
     def save_new_product(self, fields):
+        if self.user_role not in ("Administrador Total", "Gerente"):
+            messagebox.showwarning("Sin permiso", "No tienes permisos para añadir productos.")
+            return
         try:
             codigo = fields["Código de Producto (único):"].get().strip().upper()
             nombre = fields["Nombre del Producto:"].get().strip()
@@ -302,8 +318,10 @@ class InventoryPage(ctk.CTkFrame):
         else:
             messagebox.showerror("Error DB", "No se pudo guardar el producto. El código de producto podría ya existir.")
             
-
     def save_edited_product(self, fields, product_id):
+        if self.user_role not in ("Administrador Total", "Gerente"):
+            messagebox.showwarning("Sin permiso", "No tienes permisos para editar productos.")
+            return
         try:
             codigo = fields["Código de Producto (único):"].get().strip().upper()
             nombre = fields["Nombre del Producto:"].get().strip()
@@ -344,8 +362,10 @@ class InventoryPage(ctk.CTkFrame):
         else:
             messagebox.showerror("Error DB", "No se pudo actualizar el producto.")
 
-
     def delete_selected_product(self):
+        if self.user_role not in ("Administrador Total", "Gerente"):
+            messagebox.showwarning("Sin permiso", "No tienes permisos para eliminar productos.")
+            return
         selected = self.inventory_tree.selection()
         if not selected:
             messagebox.showwarning("Atención", "Seleccione un producto para eliminar.")
