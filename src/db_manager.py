@@ -5,41 +5,27 @@ import hashlib
 import os 
 import shutil 
 
-
-# Nombre del archivo de la base de datos
 DB_FILE = 'profitus.db'
-
-
-# --- Funciones de Seguridad ---
-
 
 def hash_password(password):
     """Genera un hash SHA-256 para la contraseña."""
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-
 def verify_password(stored_hash, provided_password):
     """Verifica si la contraseña proporcionada coincide con el hash almacenado."""
     return stored_hash == hash_password(provided_password)
-
-
-# ----------------------------
-
 
 class DatabaseManager:
     """Clase para manejar la conexión y las operaciones de la base de datos SQLite."""
     
     def __init__(self):
-        """Inicializa la conexión con la base de datos y crea tablas si no existen."""
         self.db_path = DB_FILE 
         self.conn = None
         self.connect()
         self.create_default_tables() 
         self.initialize_default_config() 
 
-
     def connect(self):
-        """Establece la conexión con la base de datos."""
         try:
             self.conn = sqlite3.connect(self.db_path)
             self.conn.row_factory = sqlite3.Row 
@@ -48,15 +34,12 @@ class DatabaseManager:
             print(f"Error al conectar con SQLite: {e}")
             
     def close(self):
-        """Cierra la conexión con la base de datos."""
         if self.conn:
             self.conn.close()
             self.conn = None
             print("Conexión a la DB cerrada.")
 
-
     def execute_query(self, query, params=()):
-        """Ejecuta consultas de modificación (INSERT, UPDATE, DELETE)."""
         if not self.conn:
             print("Error: Conexión a DB no activa.")
             return None
@@ -70,9 +53,7 @@ class DatabaseManager:
             self.conn.rollback() 
             return None
 
-
     def fetch_one(self, query, params=()):
-        """Ejecuta consultas de selección y devuelve una sola fila."""
         if not self.conn:
             return None
         try:
@@ -83,9 +64,7 @@ class DatabaseManager:
             print(f"Error al obtener una fila: {e}")
             return None
 
-
     def fetch_all(self, query, params=()):
-        """Ejecuta consultas de selección y devuelve todas las filas."""
         if not self.conn:
             return []
         try:
@@ -96,30 +75,21 @@ class DatabaseManager:
             print(f"Error al obtener todas las filas: {e}")
             return []
 
-
     def _check_and_add_column(self, table_name, column_name, column_type):
-        """Verifica si una columna existe y la añade si no. (Para migraciones)"""
-        if not self.conn: return
+        if not self.conn:
+            return
         try:
-            # PRAGMA table_info se usa para obtener el esquema de la tabla
             cursor = self.conn.execute(f"PRAGMA table_info({table_name})")
             columns = [info[1] for info in cursor.fetchall()]
             if column_name not in columns:
                 self.execute_query(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
                 print(f"Columna '{column_name}' añadida a la tabla '{table_name}'.")
-
-
         except sqlite3.OperationalError:
-            # Esto maneja el caso donde la tabla no existe, pero create_default_tables lo gestiona.
             pass
         except Exception as e:
             print(f"Error al verificar/añadir columna {column_name} en {table_name}: {e}")
 
-
     def create_default_tables(self):
-        """Crea las tablas y asegura la existencia de los nuevos campos."""
-        
-        # 1. Tabla de Usuarios
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,11 +97,9 @@ class DatabaseManager:
                 password TEXT NOT NULL,
                 nombre_completo TEXT,
                 rol TEXT NOT NULL DEFAULT 'Cajero',
-                foto_path TEXT -- Columna para la ruta de la foto de perfil
+                foto_path TEXT
             )
         """)
-        
-        # 2. Tabla de Productos (precio_venta y precio_costo siempre en USD)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS productos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -144,27 +112,19 @@ class DatabaseManager:
             )
         """)
 
-
-        # Migraciones (Añadir campos si no existen)
         self._check_and_add_column('productos', 'proveedor', 'TEXT')
         self._check_and_add_column('productos', 'stock_minimo', 'REAL NOT NULL DEFAULT 0')
         self._check_and_add_column('productos', 'marca', 'TEXT')
         self._check_and_add_column('productos', 'categoria', 'TEXT')
-        
-        # MIGRACIÓN DE USUARIOS (NUEVO CAMPO)
         self._check_and_add_column('usuarios', 'foto_path', 'TEXT') 
         self._check_and_add_column('usuarios', 'nombre_completo', 'TEXT')
 
-
-        # 3. Tabla de Configuración (Nombre, Logo, Tasa de Cambio)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS configuracion (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             )
         """)
-        
-        # 4. Tabla de Ventas (Encabezado de la factura)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS ventas (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,11 +133,13 @@ class DatabaseManager:
                 total_usd REAL NOT NULL, 
                 tasa_cambio REAL NOT NULL,
                 user_id INTEGER,
+                payment_method TEXT DEFAULT 'Efectivo',
+                amount_received REAL DEFAULT 0.0,
+                change_given REAL DEFAULT 0.0,
+                mobile_payment_id TEXT DEFAULT NULL,
                 FOREIGN KEY (user_id) REFERENCES usuarios(id)
             )
         """)
-        
-        # 5. Tabla de Detalles de Venta (Líneas de productos en la factura)
         self.execute_query("""
             CREATE TABLE IF NOT EXISTS detalles_venta (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,29 +155,25 @@ class DatabaseManager:
                 FOREIGN KEY (producto_id) REFERENCES productos(id)
             )
         """)
-        
-        # Migraciones para detalles_venta y ventas
+
         self._check_and_add_column('detalles_venta', 'precio_unitario_bs', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'subtotal_bs', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'precio_unitario_usd', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('detalles_venta', 'subtotal_usd', 'REAL NOT NULL DEFAULT 0.0')
         self._check_and_add_column('ventas', 'user_id', 'INTEGER')
-        
-            
+        self._check_and_add_column('ventas', 'payment_method', "TEXT DEFAULT 'Efectivo'")
+        self._check_and_add_column('ventas', 'amount_received', "REAL DEFAULT 0.0")
+        self._check_and_add_column('ventas', 'change_given', "REAL DEFAULT 0.0")
+        self._check_and_add_column('ventas', 'mobile_payment_id', "TEXT DEFAULT NULL")
+
     def initialize_default_config(self):
-        """Inserta la configuración inicial por defecto (Admin, productos de prueba, tasa de cambio)."""
-        
         hashed_password = hash_password("1234")
 
-
-        # Insertar usuario administrador por defecto si no existe
         if not self.fetch_one("SELECT id FROM usuarios WHERE username = 'admin'"):
-            # Incluye foto_path = None por defecto
             self.execute_query("INSERT INTO usuarios (username, password, nombre_completo, rol, foto_path) VALUES (?, ?, ?, ?, ?)", 
                                 ("admin", hashed_password, "Administrador Principal", "Administrador Total", None)) 
             print("Usuario 'admin' creado con contraseña hasheada y rol 'Administrador Total'.")
-            
-        # Insertar productos de prueba si no hay ninguno
+        
         if not self.fetch_one("SELECT id FROM productos"):
             products_to_insert = [
                 ('P001', 'Laptop Gamer X', 10, 850.50, 600.00, 'Electrónica', 'TechGlobal Inc.', 5, 'Alienware'),
@@ -233,13 +191,12 @@ class DatabaseManager:
             for prod in products_to_insert:
                 self.execute_query(sql_insert, prod)
             print("Productos de prueba insertados con datos USD y campos extendidos.")
-            
-        # Configuración de la empresa
+        
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'exchange_rate'"):
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
                                 ("exchange_rate", "36.00")) 
             print("Tasa de cambio por defecto (36.00) inicializada.")
-            
+        
         if not self.fetch_one("SELECT key FROM configuracion WHERE key = 'company_name'"):
             self.execute_query("INSERT INTO configuracion (key, value) VALUES (?, ?)", 
                                 ("company_name", "Mi Empresa Ejemplo")) 
@@ -247,47 +204,31 @@ class DatabaseManager:
                                 ("company_logo_path", "logo_default.png")) 
             print("Configuración de empresa inicializada.")
 
-
-    # --- Funciones Específicas de Usuarios y Autenticación ---
-
-
     def authenticate_user(self, username, password):
         """Verifica las credenciales del usuario y devuelve el objeto Row si es exitoso (incluye foto_path)."""
-        # SELECT * asegura que se obtengan todos los campos, incluyendo 'foto_path'
         user_row = self.fetch_one("SELECT * FROM usuarios WHERE username = ?", (username,))
-        
         if user_row:
             if verify_password(user_row['password'], password):
                 return user_row 
         return None
     
     def get_all_users(self):
-        """Devuelve todos los usuarios registrados (incluye foto_path)."""
-        # Aseguramos que se incluye foto_path en la selección
         return self.fetch_all("SELECT id, username, nombre_completo, rol, foto_path FROM usuarios")
     
     def create_user(self, username, password, full_name, role, foto_path=None):
-        """Crea un nuevo usuario con la contraseña hasheada y foto_path opcional."""
         hashed_pw = hash_password(password)
         return self.execute_query(
             "INSERT INTO usuarios (username, password, nombre_completo, rol, foto_path) VALUES (?, ?, ?, ?, ?)", 
             (username, hashed_pw, full_name, role, foto_path)
         )
 
-
     def delete_user(self, user_id):
-        """Elimina un usuario por su ID."""
         return self.execute_query("DELETE FROM usuarios WHERE id = ?", (user_id,))
     
     def update_user_role(self, user_id, new_role):
-        """Actualiza el rol de un usuario existente."""
         return self.execute_query("UPDATE usuarios SET rol = ? WHERE id = ?", (new_role, user_id))
     
     def update_user_details(self, user_id, username, full_name, role, foto_path):
-        """
-        NUEVO: Actualiza el nombre de usuario, nombre completo, rol y ruta de foto de un usuario.
-        Utiliza esta función para la edición completa del perfil.
-        """
         sql = """
             UPDATE usuarios SET 
                 username = ?, 
@@ -298,44 +239,28 @@ class DatabaseManager:
         """
         return self.execute_query(sql, (username, full_name, role, foto_path, user_id))
 
-
     def update_user_password(self, user_id, new_password):
-        """
-        [MÉTODO CLAVE PARA EL CAMBIO DE CONTRASEÑA]
-        Actualiza la contraseña de un usuario (hasheada).
-        """
         hashed_pw = hash_password(new_password)
         return self.execute_query("UPDATE usuarios SET password = ? WHERE id = ?", (hashed_pw, user_id))
 
-
     def update_user_photo_path(self, user_id, path):
-        """ACTUALIZADA: Actualiza la ruta de la foto de perfil de un usuario."""
         return self.execute_query("UPDATE usuarios SET foto_path = ? WHERE id = ?", (path, user_id))
         
     def get_user_photo_path(self, user_id):
-        """Obtiene la ruta de la foto de perfil de un usuario."""
         row = self.fetch_one("SELECT foto_path FROM usuarios WHERE id = ?", (user_id,))
         return row['foto_path'] if row else None
 
-
-    # --- Funciones Específicas de Configuración ---
-    
     def get_company_config(self, key):
-        """Obtiene un valor de configuración (ej: company_name, company_logo_path)."""
         row = self.fetch_one("SELECT value FROM configuracion WHERE key = ?", (key,))
         return row['value'] if row else None
 
-
     def set_company_config(self, key, value):
-        """Guarda o actualiza un valor de configuración."""
         self.execute_query("""
             INSERT OR REPLACE INTO configuracion (key, value)
             VALUES (?, ?)
         """, (key, str(value)))
 
-
     def get_exchange_rate(self):
-        """Obtiene la tasa de cambio actual desde la tabla de configuración."""
         row = self.fetch_one("SELECT value FROM configuracion WHERE key = 'exchange_rate'")
         if row:
             try:
@@ -345,30 +270,20 @@ class DatabaseManager:
                 return 0.0 
         return 0.0 
 
-
     def set_exchange_rate(self, rate):
-        """Guarda o actualiza la tasa de cambio en la tabla de configuración."""
         self.execute_query("""
             INSERT OR REPLACE INTO configuracion (key, value)
             VALUES ('exchange_rate', ?)
         """, (str(rate),))
 
-
-    # --- Función de Backup de la DB (Exportar) ---
     def perform_backup(self, destination_path):
-        """
-        Realiza una copia de seguridad (backup) de la base de datos actual 
-        en la ruta de destino especificada.
-        """
         if not self.conn:
             return False, "La conexión a la base de datos no está activa."
             
         try:
             dest_conn = sqlite3.connect(destination_path)
-            
             with dest_conn:
                 self.conn.backup(dest_conn)
-            
             dest_conn.close()
             return True, "Backup realizado con éxito."
         
@@ -379,18 +294,11 @@ class DatabaseManager:
             print(f"Error inesperado durante el backup: {e}")
             return False, f"Error inesperado: {e}"
             
-    # --- Restauración de la DB (Importar) ---
     def restore_backup(self, source_path):
-        """
-        Restaura la base de datos principal copiando el archivo de backup 
-        desde la ruta especificada. Cierra la conexión actual antes de copiar.
-        """
         if not os.path.exists(source_path):
             return False, "Error: El archivo de backup de origen no fue encontrado."
 
-
         main_db_path = self.db_path
-
 
         try:
             self.close()
@@ -398,11 +306,9 @@ class DatabaseManager:
             self.connect() 
             return False, f"Error al intentar cerrar la conexión a la DB: {e}"
 
-
         try:
             shutil.copy2(source_path, main_db_path) 
             self.connect() 
-            
             return True, f"Base de datos restaurada exitosamente desde: {source_path}"
             
         except shutil.Error as e:
@@ -413,38 +319,26 @@ class DatabaseManager:
             self.connect() 
             return False, f"Error inesperado durante la restauración: {e}"
 
-
-    # --- Funciones CRUD de Productos (Implementadas) ---
-    
     def get_all_products(self):
-        """Obtiene todos los productos, ordenados por nombre."""
         query = "SELECT * FROM productos ORDER BY nombre COLLATE NOCASE ASC"
         return self.fetch_all(query)
 
-
     def get_product_by_id(self, product_id):
-        """Obtiene un producto por su ID."""
         query = "SELECT * FROM productos WHERE id = ?"
         return self.fetch_one(query, (product_id,))
 
-
     def get_product_by_code(self, codigo):
-        """Obtiene un producto por su código (para búsquedas rápidas)."""
         query = "SELECT * FROM productos WHERE codigo = ?"
         return self.fetch_one(query, (codigo,))
 
-
     def create_product(self, codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca):
-        """Crea un nuevo producto en la DB. Todos los precios son en USD."""
         sql = """
             INSERT INTO productos (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         return self.execute_query(sql, (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca))
 
-
     def update_product(self, product_id, codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca):
-        """Actualiza todos los campos de un producto existente. Todos los precios son en USD."""
         sql = """
             UPDATE productos SET 
                 codigo = ?, nombre = ?, stock = ?, 
@@ -454,60 +348,40 @@ class DatabaseManager:
         """
         return self.execute_query(sql, (codigo, nombre, stock, precio_venta, precio_costo, categoria, proveedor, stock_minimo, marca, product_id))
 
-
     def delete_product(self, product_id):
-        """Elimina un producto por su ID."""
         return self.execute_query("DELETE FROM productos WHERE id = ?", (product_id,))
 
-
-    # --- MÉTODO TRANSACCIONAL CRUCIAL ---
-
-
-    def process_sale_transaction(self, cart_data, total_final_usd, current_rate, user_id):
-        """
-        Ejecuta una transacción atómica para registrar la venta y descontar el stock.
-        """
+    def process_sale_transaction(self, cart_data, total_final_usd, current_rate, user_id, payment_method='Efectivo', amount_received=0.0, change_given=0.0, mobile_payment_id=None):
         if not self.conn:
             return False, "Conexión a la DB no activa para la venta."
 
-
         conn = self.conn
         cursor = conn.cursor()
-        
-        # 1. Chequeo de stock (Reconfirmar justo antes de la transacción)
+
         for p_id, data in cart_data.items():
             cantidad_vendida = data['cantidad']
             stock_real = data.get('stock_real', 0) 
-            
             if stock_real < cantidad_vendida:
                 return False, f"Stock insuficiente (solo quedan {stock_real}) para el producto: {data['nombre']}."
 
-
         try:
-            # INICIO DE LA TRANSACCIÓN
             fecha_venta = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             total_final_bs = total_final_usd * current_rate 
-            
-            # A. Insertar Encabezado de Venta (Tabla 'ventas')
+
             cursor.execute("""
-                INSERT INTO ventas (fecha, total_bs, total_usd, tasa_cambio, user_id)
-                VALUES (?, ?, ?, ?, ?)
-            """, (fecha_venta, total_final_bs, total_final_usd, current_rate, user_id))
-            
-            venta_id = cursor.lastrowid 
+                INSERT INTO ventas (fecha, total_bs, total_usd, tasa_cambio, user_id, payment_method, amount_received, change_given, mobile_payment_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (fecha_venta, total_final_bs, total_final_usd, current_rate, user_id, payment_method, amount_received, change_given, mobile_payment_id))
 
+            venta_id = cursor.lastrowid
 
-            # B. Iterar sobre el carrito para insertar detalles y descontar stock
             for p_id, data in cart_data.items():
                 cantidad = data['cantidad']
-                precio_unitario_usd = data['precio_usd'] 
-                
+                precio_unitario_usd = data['precio_usd']
                 precio_unitario_bs = precio_unitario_usd * current_rate
                 subtotal_usd = cantidad * precio_unitario_usd
                 subtotal_bs = cantidad * precio_unitario_bs
 
-
-                # B.1. Insertar Detalle de Venta (Tabla 'detalles_venta')
                 cursor.execute("""
                     INSERT INTO detalles_venta (
                         venta_id, producto_id, nombre_producto, cantidad, 
@@ -515,39 +389,27 @@ class DatabaseManager:
                     )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    venta_id, p_id, data['nombre'], cantidad, 
+                    venta_id, p_id, data['nombre'], cantidad,
                     precio_unitario_usd, precio_unitario_bs, subtotal_usd, subtotal_bs
                 ))
 
-
-                # B.2. Descontar Stock (Tabla 'productos')
                 cursor.execute("""
                     UPDATE productos SET stock = stock - ? WHERE id = ?
                 """, (cantidad, p_id))
-            
-            # FIN DE LA TRANSACCIÓN: Confirmar todos los cambios
+
             conn.commit()
             return True, f"Venta {venta_id} procesada con éxito."
 
-
         except Error as e:
-            conn.rollback() 
+            conn.rollback()
             print(f"Error fatal de SQL en la transacción de venta: {e}")
             return False, f"Error de base de datos: {e}"
-            
         except Exception as e:
             conn.rollback()
             print(f"Error inesperado en la transacción de venta: {e}")
             return False, f"Error inesperado: {e}"
 
-
-    # NUEVAS FUNCIONES PARA SOPORTAR REPORTES DE VENTAS
-
     def get_sales_report(self, start_date=None, end_date=None, seller=None):
-        """
-        Obtiene las ventas filtradas por fechas y vendedor.
-        Si algún filtro es None o vacío, se ignora.
-        """
         query = """
             SELECT ventas.id, ventas.fecha, usuarios.nombre_completo, ventas.total_bs, ventas.total_usd 
             FROM ventas 
@@ -570,11 +432,7 @@ class DatabaseManager:
 
         return self.fetch_all(query, tuple(params))
 
-
     def get_all_sellers(self):
-        """
-        Obtiene los nombres de todos los usuarios con rol vendedor, gerente o admin para filtro del reporte.
-        """
         query = """
             SELECT DISTINCT nombre_completo FROM usuarios 
             WHERE rol IN ('Vendedor', 'Gerente', 'Administrador Total')
@@ -582,4 +440,3 @@ class DatabaseManager:
         """
         rows = self.fetch_all(query)
         return [row['nombre_completo'] for row in rows] if rows else []
-
